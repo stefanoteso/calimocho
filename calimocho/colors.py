@@ -38,6 +38,11 @@ class ColorsExperiment(Experiment):
         Z = np.vstack([self._w_star(x) for x in X])
         y = 1 - np.hstack((data['arr_2'], data['arr_3']))
 
+        # DEBUG
+        #y2 = np.einsum('bi,bi->b', X, Z)
+        #print(np.hstack([y.reshape(-1, 1), y2.reshape(-1, 1)]))
+        #quit()
+
         super().__init__(X, Z, y, **kwargs)
 
     @staticmethod
@@ -59,8 +64,8 @@ class ColorsExperiment(Experiment):
 
     @staticmethod
     def rule1(x):
-        y = (x[0, 1] != x[0, 2]).any() or \
-            (x[0, 1] != x[0, 3]).any() or \
+        y = (x[0, 1] != x[0, 2]).any() and \
+            (x[0, 1] != x[0, 3]).any() and \
             (x[0, 2] != x[0, 3]).any()
         return y
 
