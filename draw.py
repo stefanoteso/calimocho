@@ -26,7 +26,6 @@ def draw(args, traces, trace_args):
         perf = traces[p, :, :, 1]
         label = get_style(trace_args[p])
 
-
         y = np.mean(perf, axis=0)
         yerr = np.std(perf, axis=0) / np.sqrt(perf.shape[0])
         x = np.arange(y.shape[0])
