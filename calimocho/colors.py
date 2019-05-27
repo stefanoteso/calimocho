@@ -66,7 +66,7 @@ class ColorsExperiment(Experiment):
 
     def _w_star(self, x):
         x = x[:-1].reshape(5, 5, 4)
-        z = np.zeros((5, 5, 4))
+        z = np.zeros_like(x)
         if self.rule == 0:
             if self.rule0(x):
                 z[0, 0] = x[0, 0]
@@ -109,11 +109,9 @@ class ColorsExperiment(Experiment):
             z = z[:-1].reshape(5, 5, 4)
             axes[i].imshow(self._ohe_to_raw(x), interpolation='nearest')
             for r, c in product(range(5), repeat=2):
-                x_r_c = x[r, c]
-                value, index = np.max(x_r_c), np.argmax(x_r_c)
+                index = np.argmax(x[r, c])
                 coeff = z[r, c, index]
-                # we don't plot if x[r, c, :] is all zeros
-                if value > 0 and coeff != 0:
+                if coeff != 0:
                     color = cm.RdBu(0.5 * coeff + 0.5)
                     axes[i].add_patch(Circle((c, r), 0.35, color=color))
 
