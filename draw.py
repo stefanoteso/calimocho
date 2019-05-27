@@ -9,7 +9,8 @@ from calimocho import load
 
 def get_style(args):
     arch = ';'.join(map(str, args.w_sizes)) + '|' + ';'.join(map(str, args.phi_sizes))
-    return f'{args.experiment} {arch} {args.use_corrections} $\lambda_1={args.lambda1}\;\;\lambda_2={args.lambda2}$'
+    return '{} {} {} $\lambda_1={}$ $\lambda_2={}$'.format(
+               args.experiment, arch, args.use_corrections, args.lambda1, args.lambda2)
 
 
 def draw(args, traces, trace_args):
