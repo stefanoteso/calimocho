@@ -63,12 +63,11 @@ class SENN:
         loss_z = mean_squared_error(z[:-1], w[:-1])
 
         # Build the regularizers on w
-        # TODO make this work on xor problem
         grad_f = tf.gradients(f, x)[0]
         jacob_phi = batch_jacobian(phi, x)
         w_times_jacob_phi = tf.einsum('boi,bo->bi', jacob_phi, w)
         reg_z = tf.reduce_sum(tf.squared_difference(grad_f, w_times_jacob_phi))
-        #reg_z = tf.reduce_sum(tf.abs(w)) / float(n_hidden)
+        #reg_z = tf.reduce_sum(tf.abs(w[:-1])) / float(n_hidden)
 
         # Build the optimizers
         self.train_op_y = AdamOptimizer(self.eta) \
