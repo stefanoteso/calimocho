@@ -35,7 +35,7 @@ class ColorsExperiment(Experiment):
         X = np.array([self._raw_to_ohe(x.reshape(5, 5, 3)).ravel() for x in images])
         bias = np.ones((X.shape[0], 1))
         X = np.hstack([X, bias])
-        Z = np.vstack([self._ohe_to_expl(x) for x in X])
+        Z = np.vstack([self._w_star(x) for x in X])
         y = 1 - np.hstack((data['arr_2'], data['arr_3']))
 
         super().__init__(X, Z, y, **kwargs)
@@ -64,7 +64,7 @@ class ColorsExperiment(Experiment):
             (x[0, 2] != x[0, 3]).any()
         return y
 
-    def _ohe_to_expl(self, x):
+    def _w_star(self, x):
         x = x[:-1].reshape(5, 5, 4)
         z = np.zeros((5, 5, 4))
         if self.rule == 0:
