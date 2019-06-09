@@ -68,7 +68,7 @@ class SENN:
         #reg_z = tf.reduce_sum(tf.abs(w[:-1])) / float(n_hidden)
 
         # Build the optimizers
-        l0, l1, l2 = 1 - sum(args.lambdas), args.lambdas[0], args.lambdas[1]
+        l0, l1, l2 = 1 - sum(self.lambdas), self.lambdas[0], self.lambdas[1]
         self.train_op_y = AdamOptimizer(self.eta) \
                               .minimize(l0 * loss_y + l2 * reg_z)
         self.train_op_z = AdamOptimizer(self.eta) \
