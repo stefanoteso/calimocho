@@ -132,7 +132,7 @@ def eval_passive(experiment, args):
             return perf
 
         trace = model.fit(experiment.X[tr],
-                          experiment.Z[tr] if args.use_corrections else None,
+                          experiment.Z[tr],
                           experiment.y[tr],
                           n_epochs=args.n_epochs,
                           batch_size=args.batch_size,
@@ -159,7 +159,6 @@ def eval_passive(experiment, args):
 def _get_basename(args):
     fields = [
         ('passive', args.passive),
-        ('c', args.use_corrections),
         ('n', args.n_examples),
         ('k', args.n_splits),
         ('p', args.prop_known),
@@ -188,8 +187,6 @@ def main():
                         help='The model to use')
     parser.add_argument('--passive', action='store_true',
                         help='Stick to passive learning')
-    parser.add_argument('-c', '--use-corrections', action='store_true',
-                        help='Whether to enable learning from corrections')
     parser.add_argument('-s', '--seed', type=int, default=0,
                         help='RNG seed')
 
