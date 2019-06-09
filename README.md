@@ -1,14 +1,26 @@
 # README
 
-Q1 explanation quality
-    - compare against LIME, IG, etc.
-    - fix J regularizer for classification on XOR
-    - fix representation space on Colors
-
-Q2 learning from coorections quality
+WORKSHOP
+    - fix J regularizer for classification
     - implement learning-to-rank for corrections
-    - implement learning-to-rank for partial corrections
-    - measure runtime
 
-Q3 explanation-based query selection
-    - implement explanation entropy
+    - define partial corrections [with marginalization]
+    - define probabilistic version?
+    - define entropy on w?
+    - implement entropy
+
+    - setup experiment with deeper nets, show that they can be learned from few
+      fat examples
+
+
+Q1 LIME vs SENN
+    - compare explanation quality
+    - compare stability
+    - compare runtime
+
+Q2 CAIPI vs CALI
+    - compare data augmentation vs learning-to-rank vs IG?
+        - label perf, expl perf, runtime
+
+Q3 CALI-USY vs CALI-USYZ
+    - compare types
