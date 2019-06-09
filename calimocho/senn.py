@@ -24,19 +24,17 @@ class SENN:
     ----------
     eta : float, defaults to 0.01
         Learning rate for Stochastic Gradient Descent.
-    lambda1 : float, defaults to 0.1
-        Hyperparameter of the loss on z
-    lambda2 : float, defaults to 0.01
-        Hyperparameter of the regularizer on z.
+    lambdas : tuple of float, defaults to (0.1, 0.01)
+        Hyperparameters
     rng : None or int or numpy.random.RandomStream
         The RNG.
     """
 
     def __init__(self, **kwargs):
         self.eta = kwargs.pop('eta', 0.1)
-        self.lambda1 = kwargs.pop('lambda1', 0.1)
-        self.lambda2 = kwargs.pop('lambda2', 0.01)
+        self.lambdas = kwargs.pop('lambdas', (0.1, 0.01))
         self.rng = check_random_state(kwargs.pop('rng', None))
+        assert all(l >= 0 for l in self.lambdas) and sum(self.lambdas) <= 1
 
     def _build_subnets(self, x):
         raise NotImplementedError()
@@ -70,10 +68,13 @@ class SENN:
         #reg_z = tf.reduce_sum(tf.abs(w[:-1])) / float(n_hidden)
 
         # Build the optimizers
+        l0, l1, l2 = 1 - sum(args.lambdas), args.lambdas[0], args.lambdas[1]
         self.train_op_y = AdamOptimizer(self.eta) \
-                              .minimize(loss_y + self.lambda2 * reg_z)
+                              .minimize(l0 * loss_y + l2 * reg_z)
+        self.train_op_z = AdamOptimizer(self.eta) \
+                              .minimize(l1 * loss_z + l2 * reg_z)
         self.train_op_y_z = AdamOptimizer(self.eta) \
-                                .minimize(loss_y + self.lambda1 * loss_z + self.lambda2 * reg_z)
+                                .minimize(l0 * loss_y + l1 * loss_z + l2 * reg_z)
 
         # Build the tensorflow session
         self.session = tf.Session()
@@ -116,6 +117,12 @@ class SENN:
                     self.tf_vars['y']: y[batch].reshape(-1, 1),
                 }
                 train_op = self.train_op_y
+            elif y is None:
+                feed_dict = {
+                    self.tf_vars['x']: X[batch],
+                    self.tf_vars['z']: Z[batch],
+                }
+                train_op = self.train_op_z
             else:
                 feed_dict = {
                     self.tf_vars['x']: X[batch],

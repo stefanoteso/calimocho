@@ -25,8 +25,7 @@ MODELS = {
                 w_sizes=args.w_sizes,
                 phi_sizes=args.phi_sizes,
                 eta=args.eta,
-                lambda1=args.lambda1,
-                lambda2=args.lambda2,
+                lambdas=args.lambdas,
                 rng=rng),
 }
 
@@ -168,8 +167,7 @@ def _get_basename(args):
         ('W', '__'.join(map(str, args.w_sizes))),
         ('P', '__'.join(map(str, args.phi_sizes))),
         ('e', args.eta),
-        ('l1', args.lambda1),
-        ('l2', args.lambda2),
+        ('L', '__'.join(map(str, args.lambdas))),
         ('E', args.n_epochs),
         ('B', args.batch_size),
         ('s', args.seed),
@@ -216,10 +214,8 @@ def main():
                             'If empty, phi(x) = x.')
     group.add_argument('-e', '--eta', type=float, default=0.1,
                        help='Learning rate')
-    group.add_argument('-l1', '--lambda1', type=float, default=0.1,
-                       help='Maximum number of learning iterations')
-    group.add_argument('-l2', '--lambda2', type=float, default=0.01,
-                       help='Maximum number of learning iterations')
+    group.add_argument('-L', '--lambdas', type=float, nargs='+', default=(0.1, 0.01),
+                       help='Hyperaparameters of the SENN model')
     group.add_argument('-E', '--n-epochs', type=int, default=100,
                        help='Number of epochs per iteration')
     group.add_argument('-B', '--batch-size', type=int, default=32,
