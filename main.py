@@ -106,18 +106,25 @@ def eval_passive(experiment, args):
                     list(rng.choice(ts, size=5)))
 
         def callback(epoch, model):
-            if epoch % 10 != 0:
+            if epoch % 100 != 0:
                 return
 
-            X, Z, y = experiment.X[ts], experiment.Z[ts], experiment.y[ts]
+            perf = []
+            for X, Z, y in (
+                (experiment.X[ts], experiment.Z[ts], experiment.y[ts]),
+                (experiment.X[tr], experiment.Z[tr], experiment.y[tr])):
 
-            y_hat = model.predict(X)
-            Z_hat = model.explain(X)
+                y_hat = model.predict(X)
+                y_loss = model.loss_y(X, y)
+                y_perf = list(prfs(y, y_hat, average='binary')[:3])
 
-            y_loss = model.loss_y(X, y)
-            z_loss = model.loss_z(X, Z)
-            y_perf = prfs(y, y_hat, average='binary')[:3]
-            z_perf = np.mean(np.abs(Z - Z_hat))
+                Z_hat = model.explain(X)
+                z_loss = model.loss_z(X, Z)
+
+                perf.extend(y_perf + [y_loss, z_loss])
+
+            print(Z[0])
+            print(Z_hat[0])
 
             if args.experiment.startswith('color'):
                 for i in selected:
@@ -128,7 +135,6 @@ def eval_passive(experiment, args):
                                                 experiment.Z[i],
                                                 model.explain(x).ravel())
 
-            perf = y_perf + (z_perf, y_loss, z_loss)
             print('perf =', perf)
             return perf
 
