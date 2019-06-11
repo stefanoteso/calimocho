@@ -216,7 +216,7 @@ def main():
                        help='Hyperaparameters of the SENN model')
     group.add_argument('-E', '--n-epochs', type=int, default=100,
                        help='Number of epochs per iteration')
-    group.add_argument('-B', '--batch-size', type=int, default=32,
+    group.add_argument('-B', '--batch-size', type=int, default=None,
                        help='Batch size')
 
     args = parser.parse_args()
