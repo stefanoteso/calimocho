@@ -116,7 +116,7 @@ class ColorsExperiment(Experiment):
             for r, c in product(range(5), repeat=2):
                 index = np.argmax(x[r, c])
                 coeff = z[r, c, index]
-                if coeff != 0:
+                if np.abs(coeff) >= 1e-2:
                     color = cm.RdBu(0.5 * coeff + 0.5)
                     axes[i].add_patch(Circle((c, r), 0.35, color=color))
 
