@@ -85,7 +85,7 @@ def eval_active(experiment, args):
     return traces
 
 
-def _predict(model, X, y):
+def _predict(model, X):
     return model.predict(X), model.explain(X)
 
 
@@ -135,7 +135,7 @@ def eval_passive(experiment, args):
                                                 experiment.Z[i],
                                                 model.explain(x).ravel())
 
-            print('perf =', perf)
+            print('epoch {} : {}'.format(epoch, perf))
             return perf
 
         trace = model.fit(experiment.X[tr],
@@ -152,10 +152,10 @@ def eval_passive(experiment, args):
             path = basename + '__fold{}.png'.format(k)
             plot_xor(path, experiment, model)
 
-        yhat_tr, zhat_tr = _predict(model, experiment.X[tr], experiment.y[tr])
+        yhat_tr, zhat_tr = _predict(model, experiment.X[tr])
         perfs_tr = prfs(experiment.y[tr], yhat_tr, average='binary')[:3]
 
-        yhat_ts, zhat_ts = _predict(model, experiment.X[ts], experiment.y[ts])
+        yhat_ts, zhat_ts = _predict(model, experiment.X[ts])
         perfs_ts = prfs(experiment.y[ts], yhat_ts, average='binary')[:3]
 
         print('fold {} : tr perf: {}, ts perf: {}'.format(k+1, perfs_tr, perfs_ts))
