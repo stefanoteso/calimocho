@@ -54,7 +54,7 @@ class SENN:
 
         # Build the losses
         loss_y = log_loss(y, f)
-        loss_z = tf.reduce_mean(tf.norm(z - w, axis=1))
+        loss_z = tf.reduce_mean(tf.reduce_sum((z - w) * (z - w), axis=1))
 
         # Build the regularizers on w
         # XXX remove bias?
