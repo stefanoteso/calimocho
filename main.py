@@ -102,7 +102,8 @@ def eval_passive(experiment, args):
     for k, (tr, ts) in enumerate(split.split(experiment.X, experiment.y)):
         print('fold {} : #tr {}, #ts {}'.format(k + 1, len(tr), len(ts)))
 
-        selected = rng.choice(ts, size=5)
+        selected = (list(rng.choice(tr, size=5)) +
+                    list(rng.choice(ts, size=5)))
 
         def callback(epoch, model):
             if epoch % 10 != 0:
