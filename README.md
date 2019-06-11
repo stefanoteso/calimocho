@@ -5,9 +5,8 @@ WORKSHOP
     - implement learning-to-rank for corrections
 
     - define partial corrections [with marginalization]
-    - define probabilistic version?
-    - define entropy on w?
-    - implement entropy
+    - define geometric margin on w
+    - implement uncertainty sampling on label + explanations
 
     - setup experiment with deeper nets, show that they can be learned from few
       fat examples
