@@ -16,10 +16,6 @@ class SENN:
     z should be in the range [0, 1].
     y should be in the range [0, 1].
 
-    NOTE: there is strong competition between lambda1 and lambda2: if lambda2
-    is too large, then learning from explanations (understandably) does not
-    work.  Use only one parameter instead.
-
     Parameters
     ----------
     eta : float, defaults to 0.01
