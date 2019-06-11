@@ -1,7 +1,7 @@
 import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops.parallel_for.gradients import batch_jacobian
-from tensorflow.losses import log_loss, cosine_distance
+from tensorflow.losses import log_loss
 from tensorflow.train import AdamOptimizer
 from sklearn.utils import check_random_state
 
@@ -54,9 +54,10 @@ class SENN:
 
         # Build the losses
         loss_y = log_loss(y, f)
-        loss_z = cosine_distance(z[:,:-1], w[:,:-1], axis=1) / (n_hidden - 1)
+        loss_z = tf.reduce_mean(tf.norm(z - w, axis=1))
 
         # Build the regularizers on w
+        # XXX remove bias?
         grad_f = tf.gradients(f, x)[0]
         jacob_phi = batch_jacobian(phi, x)
         w_times_jacob_phi = tf.einsum('boi,bo->bi', jacob_phi, w)
