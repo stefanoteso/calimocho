@@ -46,15 +46,16 @@ def draw(args, traces, trace_args):
 def _draw_passive(args, traces, traces_args):
     n_pickles, n_folds, n_iters, n_measures = traces.shape
 
-    MEASURES = [2, 3, 4]
-    n_measures = len(MEASURES)
+    n_rows = n_measures // 2
 
-    w, h = 9, 6 * n_measures
-    fig, axes = plt.subplots(n_measures, 1, sharex=True, figsize=(w, h))
+    w, h = 18, 6 * n_rows
+    fig, axes = plt.subplots(n_measures // 2, 2, sharex=True, figsize=(w, h))
 
-    for i, m in enumerate(MEASURES):
-        axes[i].set_xlabel('Epochs')
-        axes[i].set_ylabel(str(m))
+    for m in range(n_measures):
+        r, c = m % n_rows, m // n_rows
+
+        axes[r,c].set_xlabel('Epochs')
+        axes[r,c].set_ylabel(str(m))
 
         x = np.arange(n_iters)
 
@@ -67,13 +68,13 @@ def _draw_passive(args, traces, traces_args):
             max_y = max(max_y, y.max() + 0.1)
             yerr = np.std(perf, axis=0) / np.sqrt(n_folds)
 
-            axes[i].plot(x, y, linewidth=2, label=label)
-            axes[i].fill_between(x, y - yerr, y + yerr, alpha=0.35, linewidth=0)
+            axes[r,c].plot(x, y, linewidth=2, label=label)
+            axes[r,c].fill_between(x, y - yerr, y + yerr, alpha=0.35, linewidth=0)
 
-        axes[i].set_ylim(0, max_y)
-        axes[i].legend(loc='upper right',
-                       fontsize=8,
-                       shadow=False)
+        axes[r,c].set_ylim(0, max_y)
+        axes[r,c].legend(loc='upper right',
+                         fontsize=8,
+                         shadow=False)
 
     fig.savefig(args.basename + '.png',
                 bbox_inches='tight',
