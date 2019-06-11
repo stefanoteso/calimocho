@@ -123,17 +123,17 @@ def eval_passive(experiment, args):
 
                 perf.extend(y_perf + [y_loss, z_loss])
 
-            print(Z[0])
-            print(Z_hat[0])
+            #print(Z[0])
+            #print(Z_hat[0])
 
-            if args.experiment.startswith('color'):
-                for i in selected:
-                    path = basename + '__fold={}__instance={}__epoch={}.png'.format(k, i, epoch)
-                    x = experiment.X[i].reshape(1, -1)
-                    experiment.dump_explanation(path,
-                                                experiment.X[i],
-                                                experiment.Z[i],
-                                                model.explain(x).ravel())
+            #if args.experiment.startswith('color'):
+            #    for i in selected:
+            #        path = basename + '__fold={}__instance={}__epoch={}.png'.format(k, i, epoch)
+            #        x = experiment.X[i].reshape(1, -1)
+            #        experiment.dump_explanation(path,
+            #                                    experiment.X[i],
+            #                                    experiment.Z[i],
+            #                                    model.explain(x).ravel())
 
             print('epoch {} : {}'.format(epoch, perf))
             return perf
