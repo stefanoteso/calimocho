@@ -107,6 +107,11 @@ class SENN:
         trace = []
         for epoch in range(n_epochs):
 
+            if callback is not None:
+                info = callback(epoch, self)
+                if info is not None:
+                    trace.append(info)
+
             batch = self.rng.randint(X.shape[0], size=batch_size)
             if Z is None:
                 feed_dict = {
@@ -129,10 +134,6 @@ class SENN:
                 train_op = self.train_op_y_z
 
             self.session.run(train_op, feed_dict=feed_dict)
-            if callback is not None:
-                info = callback(epoch, self)
-                if info is not None:
-                    trace.append(info)
 
         return trace
 
