@@ -10,7 +10,7 @@ from calimocho import load
 def get_style(args):
     arch = ';'.join(map(str, args.w_sizes)) + '|' + ';'.join(map(str, args.phi_sizes))
     l0, l1, l2 = 1 - sum(args.lambdas), args.lambdas[0], args.lambdas[1]
-    return '{} {} $\lambda_0={}$ $\lambda_1={}$ $\lambda_2={}$'.format(
+    return '{} {} $\lambda_0={:3.1f}$ $\lambda_1={:3.1f}$ $\lambda_2={:3.1f}$'.format(
                args.experiment, arch, l0, l1, l2)
 
 
