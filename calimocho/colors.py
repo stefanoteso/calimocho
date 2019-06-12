@@ -185,7 +185,6 @@ class ColorsExperiment(Experiment):
                                                 num_samples=n_samples,
                                                 num_features=n_features,
                                                 distance_metric=metric)
-            print(explanation.as_list())
             for feat, coeff in explanation.as_list():
                 coeff = int(np.sign(coeff))
                 counts[(feat, coeff)] += 1
