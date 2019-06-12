@@ -6,8 +6,11 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.patches import Circle
 
-from .experiment import Experiment
-from .senn import SENN
+from lime.lime_tabular import LimeTabularExplainer
+from sklearn.pipeline import make_pipeline
+from sklearn.linear_model import Ridge
+
+from . import Experiment, PipeStep
 
 
 _TO_OHE = {
@@ -20,12 +23,7 @@ _TO_RAW = {v: k for k, v in _TO_OHE.items()}
 
 
 class ColorsExperiment(Experiment):
-    """Implementation of the toy colors problem.
-
-    _images is  (n_examples, 75 = 5 x 5 x (R, G, B))
-    X is        (n_examples, 101 = 5 x 5 x ONEHOT + 1)
-    Z is        (n_examples, 100 = 5 x 5 x ONEHOT + 1)
-    """
+    """Implementation of the toy colors problem."""
     def __init__(self, **kwargs):
         self.rule = kwargs.pop('rule')
 
@@ -122,3 +120,49 @@ class ColorsExperiment(Experiment):
 
         fig.savefig(path, bbox_inches=0, pad_inches=0)
         plt.close(fig)
+
+    def explain_lime(self,
+                     model,
+                     known_examples,
+                     target_example,
+                     n_repeats=1,
+                     n_samples=100,
+                     n_features=4,
+                     metric='euclidean'):
+        lime = LimeTabularExplainer(self.Z[known],
+                                    class_names=CLASS_NAMES,
+                                    feature_names=FEATURE_NAMES,
+                                    kernel_width=1.0,
+                                    categorical_featres=list(range(FEATURE_NAMES)),
+                                    discretize_continuous=False,
+                                    feature_selection='forward_selection',
+                                    verbose=True)
+
+        step = PipeStep(lambda Z: np.array([self._ohe_to_raw(z).ravel() for z in Z],
+                                           dtype=np.float64))
+        pipeline = make_pipeline(step, model)
+
+        try:
+            counts = defaultdict(int)
+            for _ in range(n_repeats):
+                local_model = Ridge(alpha=1, fit_intercept=True, random_state=0)
+                explanation = lime.explain_instance(self.Z[target_example],
+                                                    pipeline.predict_proba,
+                                                    model_regressor=local_model,
+                                                    n_samples=n_samples,
+                                                    n_features=n_features,
+                                                    distance_metric=metric)
+                for feat, coeff in explanation.as_list():
+                    coeff = int(np.sign(coeff))
+                    counts[(feat, coeff)] += 1
+
+            sorted_counts = sorted(counts.items(), key=lambda _: _[-1])
+            sorted_counts = list(sorted_counts)[-self.n_features:]
+            return [fs for fs, _ in sorted_counts]
+
+        except FloatingPointError:
+            # XXX sometimes the calibrator classifier CV throws this
+            print('Warning: LIME failed, returning no explanation')
+            return None
+
+        return sorted_counts
