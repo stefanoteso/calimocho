@@ -85,10 +85,6 @@ def eval_active(experiment, args):
     return traces
 
 
-def _predict(model, X):
-    return model.predict(X), model.explain(X)
-
-
 def eval_passive(experiment, args):
     rng = np.random.RandomState(args.seed)
     model = MODELS[args.model](args, rng)
@@ -114,12 +110,11 @@ def eval_passive(experiment, args):
                 (experiment.X[ts], experiment.Z[ts], experiment.y[ts]),
                 (experiment.X[tr], experiment.Z[tr], experiment.y[tr])):
 
-                y_hat = model.predict(X)
-                y_loss = model.loss_y(X, y)
-                y_perf = list(prfs(y, y_hat, average='binary')[:3])
+                yhat = model.predict(X)
 
-                Z_hat = model.explain(X)
+                y_loss = model.loss_y(X, y)
                 z_loss = model.loss_z(X, Z)
+                y_perf = list(prfs(y, yhat, average='binary')[:3])
 
                 perf.extend(y_perf + [y_loss, z_loss])
 
@@ -151,14 +146,6 @@ def eval_passive(experiment, args):
             print('Plotting...')
             path = basename + '__fold{}.png'.format(k)
             plot_xor(path, experiment, model)
-
-        yhat_tr, zhat_tr = _predict(model, experiment.X[tr])
-        perfs_tr = prfs(experiment.y[tr], yhat_tr, average='binary')[:3]
-
-        yhat_ts, zhat_ts = _predict(model, experiment.X[ts])
-        perfs_ts = prfs(experiment.y[ts], yhat_ts, average='binary')[:3]
-
-        print('fold {} : tr perf: {}, ts perf: {}'.format(k+1, perfs_tr, perfs_ts))
 
     return traces
 
