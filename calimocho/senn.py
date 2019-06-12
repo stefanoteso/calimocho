@@ -56,9 +56,9 @@ class SENN:
         loss_y = log_loss(y, f)
         loss_z = tf.reduce_mean(tf.reduce_sum((z - w) * (z - w), axis=1))
 
-        # Build the regularizers on w
+        # Build the regularizer
         # XXX remove bias?
-        grad_f = tf.gradients(f, x)[0]
+        grad_f = tf.gradients(f, [x])[0]
         jacob_phi = batch_jacobian(phi, x)
         w_times_jacob_phi = tf.einsum('boi,bo->bi', jacob_phi, w)
         reg_z = tf.reduce_sum(tf.squared_difference(grad_f, w_times_jacob_phi))
