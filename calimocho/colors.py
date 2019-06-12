@@ -157,7 +157,7 @@ class ColorsExperiment(Experiment):
                     counts[(feat, coeff)] += 1
 
             sorted_counts = sorted(counts.items(), key=lambda _: _[-1])
-            sorted_counts = list(sorted_counts)[-self.n_features:]
+            sorted_counts = list(sorted_counts)[-n_features:]
             return [fs for fs, _ in sorted_counts]
 
         except FloatingPointError:
