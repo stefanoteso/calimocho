@@ -9,3 +9,14 @@ def load(path, **kwargs):
 def dump(path, what, **kwargs):
     with open(path, 'wb') as fp:
         pickle.dump(what, fp, **kwargs)
+
+
+class PipeStep:
+    def __init__(self, func):
+        self.func = func
+
+    def fit(self, *args, **kwargs):
+        return self
+
+    def transform(self, X):
+        return self.func(X)
