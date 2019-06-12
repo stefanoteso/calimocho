@@ -10,6 +10,7 @@ from collections import defaultdict
 from lime.lime_tabular import LimeTabularExplainer
 from sklearn.pipeline import make_pipeline
 from sklearn.linear_model import Ridge
+from time import time
 
 from . import Experiment, PipeStep, load, dump
 
@@ -148,15 +149,18 @@ class ColorsExperiment(Experiment):
                      model,
                      known_examples,
                      target_example,
-                     n_repeats=5,
+                     n_repeats=10,
                      n_samples=100,
-                     n_features=4,
+                     n_features=None,
                      metric='euclidean',
-                     kernel_width=1.0):
+                     kernel_width=10.0):
         CLASS_NAMES = ['negative', 'positive']
         FEATURE_NAMES = ['{r}_{c}'.format(**locals())
                          for r, c in product(range(5), repeat=2)]
         FEATURES = list(range(len(FEATURE_NAMES)))
+
+        if n_features is None:
+            n_features = 4 if self.rule == 0 else 3
 
         lime = LimeTabularExplainer(self.flat_images[known_examples],
                                     class_names=CLASS_NAMES,
@@ -169,7 +173,8 @@ class ColorsExperiment(Experiment):
 
         def flat_to_x(flat_images):
             n_examples = len(flat_images)
-            X = np.array([self._flat_to_ohe(fi.reshape(5, 5)) for fi in flat_images.astype(int)],
+            X = np.array([self._flat_to_ohe(fi.reshape(5, 5))
+                          for fi in flat_images.astype(int)],
                          dtype=np.float32)
             return np.hstack([X, np.ones((n_examples, 1))])
 
@@ -177,18 +182,28 @@ class ColorsExperiment(Experiment):
 
         local_model = Ridge(alpha=1, fit_intercept=True, random_state=0)
 
-        counts = defaultdict(int)
-        for _ in range(n_repeats):
+        runtime = 0
+        Z = np.zeros((n_repeats, 5, 5, 4))
+        for i in range(n_repeats):
+            t = time()
             explanation = lime.explain_instance(self.flat_images[target_example],
                                                 pipeline.predict_proba,
                                                 model_regressor=local_model,
                                                 num_samples=n_samples,
                                                 num_features=n_features,
                                                 distance_metric=metric)
-            for feat, coeff in explanation.as_list():
-                coeff = int(np.sign(coeff))
-                counts[(feat, coeff)] += 1
+            runtime += time() - t
 
-        sorted_counts = sorted(counts.items(), key=lambda _: _[-1])
-        sorted_counts = list(sorted_counts)[-n_features:]
-        return [fs for fs, _ in sorted_counts]
+            # XXX technically the same feature can appear both as positive and
+            # negative;  we ignore this for now
+
+            for feat, coeff in explanation.as_list():
+                r_c, value = feat.split('=')
+                r, c = r_c.split('_')
+                value = _TO_OHE[_COLORS_RGB[int(value)]]
+                Z[i, int(r), int(c), :] = np.array(value) * np.sign(coeff)
+
+        Z = np.hstack([Z.reshape((n_repeats, -1)), np.ones((n_repeats, 1))])
+        z = np.sum(Z, axis=0)
+
+        return z, Z, runtime

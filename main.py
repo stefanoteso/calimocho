@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.metrics import precision_recall_fscore_support as prfs
+from sklearn.metrics import pairwise_distances
 from sklearn.utils import check_random_state
 from os.path import join
 from time import time
@@ -85,6 +86,13 @@ def eval_active(experiment, args):
     return traces
 
 
+def _whatever_at_k(z_senn, z_lime, k):
+    # prop of best k elements in z_lime that are in z_senn
+    highest_lime = set(np.argsort(z_lime)[-k:]) # indices of k largest elements
+    highest_senn = set(np.argsort(z_senn)[-k:]) # indices of k largest elements
+    return len(highest_lime & highest_senn)
+
+
 def eval_passive(experiment, args):
     rng = np.random.RandomState(args.seed)
     model = MODELS[args.model](args, rng)
@@ -121,14 +129,34 @@ def eval_passive(experiment, args):
             #print(Z[0])
             #print(Z_hat[0])
 
-            #if args.experiment.startswith('color'):
-            #    for i in selected:
-            #        path = basename + '__fold={}__instance={}__epoch={}.png'.format(k, i, epoch)
-            #        x = experiment.X[i].reshape(1, -1)
-            #        experiment.dump_explanation(path,
-            #                                    experiment.X[i],
-            #                                    experiment.Z[i],
-            #                                    model.explain(x).ravel())
+            if args.experiment.startswith('color'):
+
+                similarities, dispersions = [], []
+                for i in selected:
+                    x = experiment.X[i].reshape(1, -1)
+
+                    z_senn, t_senn = model.explain(x, return_runtime=True)
+                    z_senn = z_senn.ravel()
+                    z_lime, Z_lime, t_lime = experiment.explain_lime(model, tr, i)
+
+                    n_nonzeros = len(np.nonzero(z_lime)[0])
+                    similarities.append(_whatever_at_k(z_senn, z_lime, n_nonzeros))
+
+                    n_repeats = len(Z_lime)
+                    dispersions.append(1 / (n_repeats * (n_repeats - 1)) * \
+                                       np.sum(pairwise_distances(Z_lime, Z_lime)))
+
+                    path = basename + '__fold={}__instance={}__epoch={}'.format(k, i, epoch)
+                    experiment.dump_explanation(path + '_senn.png',
+                                                experiment.X[i],
+                                                experiment.Z[i],
+                                                z_senn)
+                    experiment.dump_explanation(path + '_lime.png',
+                                                experiment.X[i],
+                                                experiment.Z[i],
+                                                z_lime)
+
+                perf.extend([np.mean(similarities), np.mean(dispersions)])
 
             print('epoch {} : {}'.format(epoch, perf))
             return perf

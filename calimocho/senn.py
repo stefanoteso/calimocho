@@ -4,6 +4,7 @@ from tensorflow.python.ops.parallel_for.gradients import batch_jacobian
 from tensorflow.losses import log_loss
 from tensorflow.train import AdamOptimizer
 from sklearn.utils import check_random_state
+from time import time
 
 
 _CHECKPOINT = '/tmp/senn.ckpt'
@@ -172,9 +173,14 @@ class SENN:
     def predict_entropy(self, X, which='labels'):
         raise NotImplementedError()
 
-    def explain(self, X):
+    def explain(self, X, return_runtime=True):
+        runtime = time()
         feed_dict = {self.tf_vars['x']: X}
-        return self.session.run(self.tf_vars['w'], feed_dict=feed_dict)
+        z = self.session.run(self.tf_vars['w'], feed_dict=feed_dict)
+        runtime = time() - runtime
+        if return_runtime:
+            return z, runtime
+        return z
 
 
 class FullFullSENN(SENN):
