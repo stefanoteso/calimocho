@@ -24,3 +24,13 @@
 #        done
 #    done
 #done
+
+# Active learning
+for exp in colors0 colors1; do
+    for arch in "101" "101 101 101" "101 101 101 101 101"; do
+        for lambdas in "1 0" "0.9 0" "0.9 0.1" "0.5 0" "0.5 0.1" "0.1 0" "0.1 0.1" "0 0" "0 0.1"; do
+            python main.py $exp full_full -k 5 -p 0.0001 -T 300 \
+                -W $arch -E 100 --lambdas $lambdas -e 0.01
+        done
+    done
+done
