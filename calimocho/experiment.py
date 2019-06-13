@@ -19,6 +19,7 @@ class Experiment:
         self.rng = check_random_state(rng)
 
     def split(self, n_splits=10, prop_known=0.5):
+
         # Generate balanced folds
         kfold = StratifiedKFold(n_splits=n_splits,
                                 shuffle=True,
@@ -26,10 +27,12 @@ class Experiment:
         for nonts_indices, ts_indices in kfold.split(self.X, self.y):
 
             # Split the non-test set into known set and training set
-            split = StratifiedShuffleSplit(n_splits=1,
-                                           test_size=prop_known,
-                                           random_state=self.rng)
-            for tr_indices, kn_indices in split.split(self.X[nonts_indices],
-                                                      self.y[nonts_indices]):
+            n_known = max(int(len(nonts_indices) * prop_known), 5)
+            kn_indices = self.rng.choice(nonts_indices, size=n_known)
+            tr_indices = np.array(list(set(nonts_indices) - set(kn_indices)))
 
-                yield kn_indices, tr_indices, ts_indices
+            assert len(set(kn_indices) & set(tr_indices)) == 0
+            assert len(set(kn_indices) & set(ts_indices)) == 0
+            assert len(set(tr_indices) & set(ts_indices)) == 0
+
+            yield kn_indices, tr_indices, ts_indices
