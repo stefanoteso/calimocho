@@ -102,9 +102,8 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
 
         runtime = time() - runtime
 
-        perf = evaluate(i)
-        trace.append((i, perf))
-        print('{t:3d} : {perf}'.format(**locals()))
+        trace.append([i] + list(evaluate(i)) + [runtime])
+        print('{:3d} : {}'.format(t, trace[-1]))
 
     return trace
 
