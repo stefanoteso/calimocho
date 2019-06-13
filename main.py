@@ -31,24 +31,20 @@ MODELS = {
 }
 
 
-def _select_at_random(experiment, model, tr):
-    return model.rng.choice(sorted(tr))
+def _select_at_random(experiment, model, candidates):
+    return model.rng.choice(sorted(candidates))
 
 
-def _select_by_margin(experiment, model, tr):
+def _select_by_margin(experiment, model, candidates):
     margin = model.predict_margin(experiment.X)
-    nonzero_margin = np.zeros_like(margin)
-    nonzero_margin[tr] = margin[tr]
+    nonzero_margin = np.ones_like(margin) * np.inf
+    nonzero_margin[candidates] = margin[candidates]
     return np.argmin(nonzero_margin)
 
 
 STRATEGIES = {
-    'random': \
-        lambda experiment, model, tr: \
-            model.rng.choice(sorted(tr)),
-    'margin': \
-        lambda experiment, model, tr: \
-            model.predict_margin(experiment.X[tr]),
+    'random': _select_at_random,
+    'margin': _select_by_margin,
 }
 
 
