@@ -169,8 +169,8 @@ class SENN:
         y_pred = self.predict(X, discretize=False)
         return np.hstack((1 - y_pred, y_pred))
 
-    def predict_entropy(self, X, which='labels'):
-        raise NotImplementedError()
+    def predict_margin(self, X, which='labels'):
+        return np.min(self.predict_proba(X), axis=1)
 
     def explain(self, X, return_runtime=True):
         runtime = time()
