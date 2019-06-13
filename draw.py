@@ -10,8 +10,11 @@ from calimocho import load
 def get_style(args):
     arch = ';'.join(map(str, args.w_sizes)) + '|' + ';'.join(map(str, args.phi_sizes))
     l0, l1, l2 = 1 - sum(args.lambdas), args.lambdas[0], args.lambdas[1]
-    return '{} {} $\lambda_0={:3.1f}$ $\lambda_1={:3.1f}$ $\lambda_2={:3.1f}$'.format(
+    key = '{} {} $\lambda_0={:3.1f}$ $\lambda_1={:3.1f}$ $\lambda_2={:3.1f}$'.format(
                args.experiment, arch, l0, l1, l2)
+    if args.record_lime:
+        key += ' lr={} ls={} lf={}'.format(args.lime_repeats, args.lime_samples, args.lime_features)
+    return key
 
 
 def draw(args, traces, trace_args):
@@ -46,10 +49,10 @@ def draw(args, traces, trace_args):
 def _draw_passive(args, traces, traces_args):
     n_pickles, n_folds, n_iters, n_measures = traces.shape
 
-    n_rows = n_measures // 2
-
-    w, h = 18, 6 * n_rows
-    fig, axes = plt.subplots(n_measures // 2, 2, sharex=True, figsize=(w, h))
+    n_rows = 5
+    n_cols = int(np.ceil(n_measures / n_rows))
+    w, h = 9 * n_cols, 6 * n_rows
+    fig, axes = plt.subplots(n_rows, n_cols, sharex=True, figsize=(w, h))
 
     for m in range(n_measures):
         r, c = m % n_rows, m // n_rows
