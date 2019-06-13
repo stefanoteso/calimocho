@@ -106,11 +106,10 @@ def eval_passive(experiment, args):
     for k, (tr, ts) in enumerate(split.split(experiment.X, experiment.y)):
         print('fold {} : #tr {}, #ts {}'.format(k + 1, len(tr), len(ts)))
 
-        selected = (list(rng.choice(tr, size=5)) +
-                    list(rng.choice(ts, size=5)))
+        selection = rng.choice(ts, size=10)
 
         def callback(epoch, model):
-            if epoch % 100 != 0:
+            if epoch % 250 != 0:
                 return
 
             perf = []
@@ -129,15 +128,21 @@ def eval_passive(experiment, args):
             #print(Z[0])
             #print(Z_hat[0])
 
-            if args.experiment.startswith('color'):
+            if args.experiment.startswith('color') and args.record_lime:
 
-                similarities, dispersions = [], []
-                for i in selected:
+                similarities, dispersions, times_senn, times_lime = [], [], [], []
+                for i in selection:
                     x = experiment.X[i].reshape(1, -1)
 
                     z_senn, t_senn = model.explain(x, return_runtime=True)
                     z_senn = z_senn.ravel()
-                    z_lime, Z_lime, t_lime = experiment.explain_lime(model, tr, i)
+                    z_lime, Z_lime, t_lime = \
+                        experiment.explain_lime(model, tr, i,
+                                                n_repeats=args.lime_repeats,
+                                                n_samples=args.lime_samples,
+                                                n_features=args.lime_features)
+                    times_senn.append(t_senn)
+                    times_lime.append(t_lime)
 
                     n_nonzeros = len(np.nonzero(z_lime)[0])
                     similarities.append(_whatever_at_k(z_senn, z_lime, n_nonzeros))
@@ -156,7 +161,12 @@ def eval_passive(experiment, args):
                                                 experiment.Z[i],
                                                 z_lime)
 
-                perf.extend([np.mean(similarities), np.mean(dispersions)])
+                perf.extend([
+                    np.mean(similarities),
+                    np.mean(dispersions),
+                    np.mean(times_senn),
+                    np.mean(times_lime),
+                ])
 
             print('epoch {} : {}'.format(epoch, perf))
             return perf
@@ -193,6 +203,14 @@ def _get_basename(args):
         ('B', args.batch_size),
         ('s', args.seed),
     ]
+
+    if args.record_lime:
+        fields += [
+            ('limer', args.lime_repeats),
+            ('limes', args.lime_samples),
+            ('limef', args.lime_features),
+        ]
+
     basename = args.experiment + '__' + '__'.join([name + '=' + str(value)
                                                    for name, value in fields])
     return join('results', basename)
@@ -239,6 +257,16 @@ def main():
                        help='Number of epochs per iteration')
     group.add_argument('-B', '--batch-size', type=int, default=None,
                        help='Batch size')
+
+    group = parser.add_argument_group('LIME (colors{0,1} only)')
+    group.add_argument('--record-lime', action='store_true',
+                       help='Record LIME performance')
+    group.add_argument('--lime-repeats', type=int, default=1,
+                       help='Number of times LIME is called')
+    group.add_argument('--lime-samples', type=int, default=100,
+                       help='Number of samples used by LIME')
+    group.add_argument('--lime-features', type=int, default=None,
+                       help='Number of features LIME can use at most')
 
     args = parser.parse_args()
     basename = _get_basename(args)
