@@ -31,6 +31,28 @@ MODELS = {
 }
 
 
+def _select_at_random(experiment, model, tr):
+    return model.rng.choice(sorted(tr))
+
+
+def _select_by_margin(experiment, model, tr):
+    margin = model.predict_margin(experiment.X)
+    nonzero_margin = np.zeros_like(margin)
+    nonzero_margin[tr] = margin[tr]
+    return np.argmin(nonzero_margin)
+
+
+STRATEGIES = {
+    'random': \
+        lambda experiment, model, tr: \
+            model.rng.choice(sorted(tr)),
+    'margin': \
+        lambda experiment, model, tr: \
+            model.predict_margin(experiment.X[tr]),
+}
+
+
+
 def _move(dst, src, i):
     dst, src = set(dst), set(src)
     assert i in src and not i in dst
@@ -39,37 +61,54 @@ def _move(dst, src, i):
     return dst, src
 
 
-def _run_fold(experiment, model, args, kn, tr, ts):
+def _run_fold_active(experiment, model, args, kn, tr, ts):
+    # TODO collect a dataset
+
     max_iters = args.max_iters
     if max_iters <= 0:
         max_iters = len(tr)
 
+    select_query = STRATEGIES[args.strategy]
+
+    def evaluate(i):
+        xi = experiment.X[i].reshape(1, -1)
+        zi = experiment.Z[i].reshape(1, -1)
+        y_loss_i = model.loss_y(xi, experiment.y[ts])
+        z_loss_i = model.loss_z(xi, zi)
+
+        y_loss_ts = model.loss_y(experiment.X[ts], experiment.y[ts])
+        z_loss_ts = model.loss_z(experiment.X[ts], experiment.Z[ts])
+
+        return y_loss_i, z_loss_i, y_loss_ts, z_loss_ts
+
+    trace = []
     model.fit(experiment.X[kn],
               experiment.Z[kn],
               experiment.y[kn],
+              n_epochs=args.n_epochs,
+              batch_size=args.batch_size,
               warm=False)
 
-    trace = []
     for t in range(max_iters):
-        runtime = time()
-
         if not len(tr):
             break
 
-        # TODO implement better strategies
-        i = model.rng.choice(sorted(tr))
-        model.fit(experiment.X[i].reshape(1, -1),
-                  experiment.Z[i].reshape(1, -1),
-                  experiment.y[i].reshape(1, -1),
+        runtime = time()
+        i = select_query(experiment, model, tr)
+
+        model.fit(experiment.X[kn],
+                  experiment.Z[kn],
+                  experiment.y[kn],
+                  n_epochs=args.n_epochs,
+                  batch_size=args.batch_size,
                   warm=True)
         kn, tr = _move(kn, tr, i)
 
-        runtime = runtime - time()
+        runtime = time() - runtime
 
-        perf = roc_auc_score(experiment.y[ts], model.predict(experiment.X[ts]))
+        perf = evaluate(i)
         trace.append((i, perf))
-
-        print('Iter {t:3d}: {perf:5.3f} in {runtime:5.3f}s'.format(**locals()))
+        print('{t:3d} : {perf}'.format(**locals()))
 
     return trace
 
@@ -79,9 +118,10 @@ def eval_active(experiment, args):
     model = MODELS[args.model](args, rng)
 
     traces = []
-    for kn, tr, ts in experiment.split(n_splits=args.n_folds,
-                                       prop_known=args.prop_known):
-        traces.append(_run_fold(experiment, model, args, kn, tr, ts))
+    for k, (kn, tr, ts) in enumerate(experiment.split(n_splits=args.n_splits,
+                                                      prop_known=args.prop_known)):
+        print('fold {} : #kn {}, #tr {}, #ts {}'.format(k + 1, len(kn), len(tr), len(ts)))
+        traces.append(_run_fold_active(experiment, model, args, kn, tr, ts))
 
     return traces
 
@@ -190,6 +230,7 @@ def eval_passive(experiment, args):
 
 def _get_basename(args):
     fields = [
+        ('strategy', args.strategy),
         ('passive', args.passive),
         ('n', args.n_examples),
         ('k', args.n_splits),
@@ -225,6 +266,8 @@ def main():
                         help='name of the experiment')
     parser.add_argument('model', type=str, choices=sorted(MODELS.keys()),
                         help='The model to use')
+    parser.add_argument('--strategy', choices=sorted(STRATEGIES.keys()),
+                        default='random', help='The query selection strategy')
     parser.add_argument('--passive', action='store_true',
                         help='Stick to passive learning')
     parser.add_argument('-s', '--seed', type=int, default=0,
