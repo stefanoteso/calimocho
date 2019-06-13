@@ -17,42 +17,18 @@ def get_style(args):
     return key
 
 
-def draw(args, traces, trace_args):
-    print(np.array(traces).shape)
-    quit()
-
-    n_pickles, n_folds, n_iters, _ = traces.shape
-
-    fig, ax = plt.subplots(1, 1)
-    ax.set_xlabel('Iterations')
-    ax.set_ylabel('Performance')
-
-    for p in range(traces.shape[0]):
-        perf = traces[p, :, :, 1]
-        label = get_style(trace_args[p])
-
-        y = np.mean(perf, axis=0)
-        yerr = np.std(perf, axis=0) / np.sqrt(perf.shape[0])
-        x = np.arange(y.shape[0])
-
-        ax.plot(x, y, linewidth=2, label=label)
-        ax.fill_between(x, y - yerr, y + yerr, alpha=0.35, linewidth=0)
-
-    legend = ax.legend(loc='lower right',
-                       fontsize=16,
-                       shadow=False)
-    fig.savefig(args.basename + '.png',
-                bbox_inches='tight',
-                pad_inches=0)
-
-
-def _draw_passive(args, traces, traces_args):
+def _draw(args, traces, traces_args):
     n_pickles, n_folds, n_iters, n_measures = traces.shape
 
-    n_rows = 5
+    if n_measures == 14: # passive
+        n_rows = 5
+    elif n_measures == 6: # active
+        n_rows = 6
+
     n_cols = int(np.ceil(n_measures / n_rows))
     w, h = 9 * n_cols, 6 * n_rows
     fig, axes = plt.subplots(n_rows, n_cols, sharex=True, figsize=(w, h))
+    axes = axes.reshape((n_rows, n_cols))
 
     for m in range(n_measures):
         r, c = m % n_rows, m // n_rows
@@ -103,23 +79,7 @@ if __name__ == '__main__':
 
     if any(args.passive for args in trace_args):
         assert all(args.passive for args in trace_args)
-        _draw_passive(args, traces, trace_args)
     else:
-        raise NotImplementedError()
+        assert all(not args.passive for args in trace_args)
 
-
-    # # Traces may have different lenghts, let's cap them to the shortest one
-    # # XXX this code is horrible
-    # min_len = None
-    # for trace in traces:
-    #     for fold in trace:
-    #         min_len = len(fold) if min_len is None else min(min_len, len(fold))
-
-    # shortened_traces = []
-    # for trace in traces:
-    #     shortened_folds = []
-    #     for fold in trace:
-    #         shortened_folds.append(fold[:min_len])
-    #     shortened_traces.append(shortened_folds)
-
-    # draw(args, np.array(shortened_traces), trace_args)
+    _draw(args, traces, trace_args)
