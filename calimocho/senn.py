@@ -166,7 +166,6 @@ class SENN:
         return (y_pred, dot) if return_dot else y_pred
 
     def predict_proba(self, X):
-        assert hasattr(self, 'session'), 'fit the model first'
         y_pred = self.predict(X, discretize=False)
         return np.hstack((1 - y_pred, y_pred))
 
