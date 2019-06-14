@@ -12,6 +12,8 @@ def get_style(args):
     l0, l1, l2 = 1 - sum(args.lambdas), args.lambdas[0], args.lambdas[1]
     key = '{} {} $\lambda_0={:3.1f}$ $\lambda_1={:3.1f}$ $\lambda_2={:3.1f}$'.format(
                args.experiment, arch, l0, l1, l2)
+    if args.n_corrected:
+        key += ' c={}'.format(args.n_corrected)
     if args.record_lime:
         key += ' lr={} ls={} lf={}'.format(args.lime_repeats, args.lime_samples, args.lime_features)
     return key
