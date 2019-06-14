@@ -1,25 +1,18 @@
-# README
+# CALIMOCHO
 
-WORKSHOP
-    - fix J regularizer for classification
-    - implement learning-to-rank for corrections
+An implementation of Explanatory Active Learning (XAL) based on
+Self-explainable Neural Networks.
 
-    - define partial corrections [with marginalization]
-    - define geometric margin on w
-    - implement uncertainty sampling on label + explanations
+See:
 
-    - setup experiment with deeper nets, show that they can be learned from few
-      fat examples
+* Stefano Teso - *Toward Faithful Explanatory Interactive Machine Learning*, submitted to the 3rd International Tutorial & Workshop on Interactive and Adaptive Learning (IAL'19).
+* Stefano Teso and Kristian Kersting - *Explanatory Interactive Machine Learning*, International Conference on AI, Ethics and Society, 2019.
 
 
-Q1 LIME vs SENN
-    - compare explanation quality
-    - compare stability
-    - compare runtime
+### Experiments & Dataset
 
-Q2 CAIPI vs CALI
-    - compare data augmentation vs learning-to-rank vs IG?
-        - label perf, expl perf, runtime
+Our preliminary experiments use the synthetic colors dataset from:
 
-Q3 CALI-USY vs CALI-USYZ
-    - compare types
+* Andrew Ross, Michael C. Hughes, Finale Doshi-Velez - *Right for the right reasons: Training differentiable models by constraining their explanations*
+
+The original data can be found on the [rrr repo](https://github.com/dtak/rrr).  We used the preprocessed dataset from the [caipi repo](https://github.com/stefanoteso/caipi).
