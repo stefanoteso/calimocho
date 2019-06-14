@@ -34,6 +34,11 @@ for exp in colors0 colors1; do
                     --strategy $strategy -k 5 -p 0.0001 -T 300 \
                     -W $arch -E 100 --lambdas $lambdas -e 0.01
             done
+
+            fmtarch=`echo $arch | tr ' ' ','`
+            python draw.py \
+                $exp-active-W=$fmtarch-$strategy \
+                results/${exp}__strategy=${strategy}__passive=False__*__W=${fmtarch}__*__L=*,0.0__*.pickle
         done
     done
 done
