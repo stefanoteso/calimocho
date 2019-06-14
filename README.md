@@ -6,7 +6,7 @@ Self-explainable Neural Networks.
 See:
 
 * Stefano Teso - *Toward Faithful Explanatory Interactive Machine Learning*, submitted to the 3rd International Tutorial & Workshop on Interactive and Adaptive Learning (IAL'19).
-* Stefano Teso and Kristian Kersting - *Explanatory Interactive Machine Learning*, International Conference on AI, Ethics and Society, 2019.
+* Stefano Teso and Kristian Kersting - *Explanatory Interactive Machine Learning*, International Conference on AI, Ethics and Society, 2019 ([pdf](https://ml-research.github.io/papers/teso2019aies_XIML.pdf)).
 
 
 ### Dataset
