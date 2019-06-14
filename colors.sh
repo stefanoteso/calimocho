@@ -44,10 +44,13 @@
 # done
 
 # Active learning from partial explanations
-for exp in colors0; do
-    for strategy in random; do
-        for arch in "101"; do
-            for lambdas in "1 0" "0 0"; do
+for exp in colors0 colors1; do
+    for strategy in random margin; do
+        for arch in "101" "101 101 101" "101 101 101 101 101"; do
+            python main.py $exp full_full \
+                --strategy $strategy -k 5 -p 0.0001 -T 300 \
+                -W $arch -E 100 --lambdas 0 0 -e 0.01
+            for lambdas in "1 0" "0.1 0"; do
                 for num_corr in 1 2 3 4; do
                     python main.py $exp full_full \
                         --strategy $strategy -k 5 -p 0.0001 -T 300 \
