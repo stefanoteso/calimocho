@@ -110,8 +110,7 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
         i = select_query(experiment, model, tr)
         kn, tr = _move(kn, tr, i)
 
-        assert 0 <= args.n_corrected <= 1
-        if args.n_corrected < 1:
+        if args.n_corrected is not None:
             corrections[i] = _get_correction(experiment, model, args, i)
             explanation_feedback = corrections[kn]
             # c = 2(zhat - z) implies:
@@ -316,7 +315,7 @@ def main():
                        help='Proportion of passively known examples; '
                             'It is used as the proportion of test '
                             'examples when using --passive')
-    group.add_argument('-c', '--n-corrected', type=float, default=1,
+    group.add_argument('-c', '--n-corrected', type=int, default=1,
                        help='Proportion of features corrected at each '
                             'iteration')
     group.add_argument('-T', '--max-iters', type=int, default=100,
