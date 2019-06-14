@@ -58,8 +58,6 @@ def _move(dst, src, i):
 
 
 def _run_fold_active(experiment, model, args, kn, tr, ts):
-    # TODO collect a dataset
-
     max_iters = args.max_iters
     if max_iters <= 0:
         max_iters = len(tr)
