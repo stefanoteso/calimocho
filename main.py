@@ -110,9 +110,9 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
         i = select_query(experiment, model, tr)
         kn, tr = _move(kn, tr, i)
 
-        if args.n_corrected is not None:
+        if args.n_corrected >= 1:
             corrections[i] = _get_correction(experiment, model, args, i)
-            explanation_feedback = corrections[kn]
+            explanation_feedback = -corrections[kn]
             # c = 2(zhat - z) implies:
             # min_w <w, w + c>
             # = min_w <w, w + 2(zhat - z)>
