@@ -62,14 +62,12 @@ def _get_correction(experiment, model, args, i):
     z = experiment.Z[i]
     z_hat = model.explain(x.reshape(1, -1)).ravel()
 
-    n_corrected = max(1, int(args.prop_corrected * z.shape[0]))
-
     # ignore the bias
     z_hat[-1] = z[-1]
 
     # compute the indices of the n_corrected features with largest diff
     diff = np.abs(z - z_hat)
-    indices = np.argsort(diff)[::-1][:n_corrected]
+    indices = np.argsort(diff)[::-1][:args.n_corrected]
 
     # discretize the difference
     correction = np.zeros_like(diff)
@@ -112,10 +110,10 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
         i = select_query(experiment, model, tr)
         kn, tr = _move(kn, tr, i)
 
-        assert 0 <= args.prop_corrected <= 1
-        if args.prop_corrected < 1:
+        assert 0 <= args.n_corrected <= 1
+        if args.n_corrected < 1:
             corrections[i] = _get_correction(experiment, model, args, i)
-            explanation_feedback = 2 * corrections[kn]
+            explanation_feedback = corrections[kn]
             # c = 2(zhat - z) implies:
             # min_w <w, w + c>
             # = min_w <w, w + 2(zhat - z)>
@@ -126,7 +124,7 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
             # = min_w ||w||^2 + ||w||^2 - 2<w, z> + ||z||^2 - ||w||^2 + 2<w, zhat> - ||zhat||^2
             # = min_w ||w||^2 + ||w - z||^2 - ||w - zhat||^2
         else:
-            explanation_feedback = -2 * experiment.Z[kn]
+            explanation_feedback = experiment.Z[kn]
             # c = -2z implies:
             # <w, w + c>
             # = <w, w - 2z>
@@ -270,7 +268,7 @@ def _get_basename(args):
         ('n', args.n_examples),
         ('k', args.n_splits),
         ('p', args.prop_known),
-        ('c', args.prop_corrected),
+        ('c', args.n_corrected),
         ('T', args.max_iters),
         ('W', ','.join(map(str, args.w_sizes))),
         ('P', ','.join(map(str, args.phi_sizes))),
@@ -318,7 +316,7 @@ def main():
                        help='Proportion of passively known examples; '
                             'It is used as the proportion of test '
                             'examples when using --passive')
-    group.add_argument('-c', '--prop-corrected', type=float, default=1,
+    group.add_argument('-c', '--n-corrected', type=float, default=1,
                        help='Proportion of features corrected at each '
                             'iteration')
     group.add_argument('-T', '--max-iters', type=int, default=100,
