@@ -172,7 +172,7 @@ class SENN:
     def predict_margin(self, X, which='labels'):
         return np.min(self.predict_proba(X), axis=1)
 
-    def explain(self, X, return_runtime=True):
+    def explain(self, X, return_runtime=False):
         runtime = time()
         feed_dict = {self.tf_vars['x']: X}
         z = self.session.run(self.tf_vars['w'], feed_dict=feed_dict)
