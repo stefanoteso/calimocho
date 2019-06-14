@@ -57,6 +57,26 @@ def _move(dst, src, i):
     return dst, src
 
 
+def _get_correction(experiment, model, args, i):
+    x = experiment.X[i]
+    z = experiment.Z[i]
+    z_hat = model.explain(x.reshape(1, -1)).ravel()
+
+    n_corrected = max(1, int(args.prop_corrected * z.shape[0]))
+
+    # ignore the bias
+    z_hat[-1] = z[-1]
+
+    # compute the indices of the n_corrected features with largest diff
+    diff = np.abs(z - z_hat)
+    indices = np.argsort(diff)[::-1][:n_corrected]
+
+    # discretize the difference
+    correction = np.zeros_like(diff)
+    correction[indices] = np.sign(z_hat - z)[indices]
+    return correction
+
+
 def _run_fold_active(experiment, model, args, kn, tr, ts):
     max_iters = args.max_iters
     if max_iters <= 0:
@@ -75,7 +95,6 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
 
         return y_loss_i, z_loss_i, y_loss_ts, z_loss_ts
 
-    trace = []
     model.fit(experiment.X[kn],
               experiment.Z[kn],
               experiment.y[kn],
@@ -83,16 +102,39 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
               batch_size=args.batch_size,
               warm=False)
 
+    corrections, trace = np.zeros_like(experiment.Z), []
     for t in range(max_iters):
         if not len(tr):
             break
 
         runtime = time()
+
         i = select_query(experiment, model, tr)
         kn, tr = _move(kn, tr, i)
 
+        assert 0 <= args.prop_corrected <= 1
+        if args.prop_corrected < 1:
+            corrections[i] = _get_correction(experiment, model, args, i)
+            explanation_feedback = 2 * corrections[kn]
+            # c = 2(zhat - z) implies:
+            # min_w <w, w + c>
+            # = min_w <w, w + 2(zhat - z)>
+            # = min_w ||w||^2 + 2<w, zhat - z>
+            # = min_w ||w||^2 + 2<w, zhat - z> + const.
+            # = min_w ||w||^2 + 2<w, zhat - z> + ||z||^2 - ||zhat||^2
+            # = min_w ||w||^2 - 2<w, z> + ||z||^2 + 2<w, zhat> - ||zhat||^2
+            # = min_w ||w||^2 + ||w||^2 - 2<w, z> + ||z||^2 - ||w||^2 + 2<w, zhat> - ||zhat||^2
+            # = min_w ||w||^2 + ||w - z||^2 - ||w - zhat||^2
+        else:
+            explanation_feedback = -2 * experiment.Z[kn]
+            # c = -2z implies:
+            # <w, w + c>
+            # = <w, w - 2z>
+            # = ||w||^2 - 2<w, z>
+            # = ||w - z||^2 + const.
+
         model.fit(experiment.X[kn],
-                  experiment.Z[kn],
+                  explanation_feedback,
                   experiment.y[kn],
                   n_epochs=args.n_epochs,
                   batch_size=args.batch_size,
@@ -228,6 +270,7 @@ def _get_basename(args):
         ('n', args.n_examples),
         ('k', args.n_splits),
         ('p', args.prop_known),
+        ('c', args.prop_corrected),
         ('T', args.max_iters),
         ('W', ','.join(map(str, args.w_sizes))),
         ('P', ','.join(map(str, args.phi_sizes))),
@@ -275,6 +318,9 @@ def main():
                        help='Proportion of passively known examples; '
                             'It is used as the proportion of test '
                             'examples when using --passive')
+    group.add_argument('-c', '--prop-corrected', type=float, default=1,
+                       help='Proportion of features corrected at each '
+                            'iteration')
     group.add_argument('-T', '--max-iters', type=int, default=100,
                        help='Maximum number of learning iterations')
 
