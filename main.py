@@ -89,6 +89,7 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
 
         runtime = time()
         i = select_query(experiment, model, tr)
+        kn, tr = _move(kn, tr, i)
 
         model.fit(experiment.X[kn],
                   experiment.Z[kn],
@@ -96,7 +97,6 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
                   n_epochs=args.n_epochs,
                   batch_size=args.batch_size,
                   warm=True)
-        kn, tr = _move(kn, tr, i)
 
         runtime = time() - runtime
 
