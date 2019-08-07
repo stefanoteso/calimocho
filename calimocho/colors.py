@@ -1,5 +1,4 @@
 import numpy as np
-import tensorflow as tf
 from os.path import join
 from itertools import product
 import matplotlib.pyplot as plt
