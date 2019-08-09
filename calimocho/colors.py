@@ -4,14 +4,9 @@ from itertools import product
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from matplotlib.patches import Circle
-
-from collections import defaultdict
-from lime.lime_tabular import LimeTabularExplainer
-from sklearn.pipeline import make_pipeline
-from sklearn.linear_model import Ridge
 from time import time
 
-from . import Experiment, PipeStep, load, dump
+from . import Experiment, load, dump
 
 
 _TO_OHE = {
@@ -143,66 +138,3 @@ class ColorsExperiment(Experiment):
 
         fig.savefig(path, bbox_inches=0, pad_inches=0)
         plt.close(fig)
-
-    def explain_lime(self,
-                     model,
-                     known_examples,
-                     target_example,
-                     n_repeats=10,
-                     n_samples=100,
-                     n_features=None,
-                     metric='euclidean',
-                     kernel_width=10.0):
-        CLASS_NAMES = ['negative', 'positive']
-        FEATURE_NAMES = ['{r}_{c}'.format(**locals())
-                         for r, c in product(range(5), repeat=2)]
-        FEATURES = list(range(len(FEATURE_NAMES)))
-
-        if n_features is None:
-            n_features = 4 if self.rule == 0 else 3
-
-        lime = LimeTabularExplainer(self.flat_images[known_examples],
-                                    class_names=CLASS_NAMES,
-                                    feature_names=FEATURE_NAMES,
-                                    categorical_features=FEATURES,
-                                    discretize_continuous=False,
-                                    feature_selection='forward_selection',
-                                    kernel_width=kernel_width,
-                                    verbose=True)
-
-        def flat_to_x(flat_images):
-            n_examples = len(flat_images)
-            X = np.array([self._flat_to_ohe(fi.reshape(5, 5))
-                          for fi in flat_images.astype(int)],
-                         dtype=np.float32)
-            return np.hstack([X, np.ones((n_examples, 1))])
-
-        pipeline = make_pipeline(PipeStep(flat_to_x), model)
-
-        local_model = Ridge(alpha=1, fit_intercept=True, random_state=0)
-
-        runtime = 0
-        Z = np.zeros((n_repeats, 5, 5, 4))
-        for i in range(n_repeats):
-            t = time()
-            explanation = lime.explain_instance(self.flat_images[target_example],
-                                                pipeline.predict_proba,
-                                                model_regressor=local_model,
-                                                num_samples=n_samples,
-                                                num_features=n_features,
-                                                distance_metric=metric)
-            runtime += time() - t
-
-            # XXX technically the same feature can appear both as positive and
-            # negative;  we ignore this for now
-
-            for feat, coeff in explanation.as_list():
-                r_c, value = feat.split('=')
-                r, c = r_c.split('_')
-                value = _TO_OHE[_COLORS_RGB[int(value)]]
-                Z[i, int(r), int(c), :] = np.array(value) * np.sign(coeff)
-
-        Z = np.hstack([Z.reshape((n_repeats, -1)), np.ones((n_repeats, 1))])
-        z = np.sum(Z, axis=0)
-
-        return z, Z, runtime

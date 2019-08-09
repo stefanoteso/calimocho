@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -20,13 +18,22 @@ EXPERIMENTS = {
 
 
 MODELS = {
-    'full_full': \
+    'senn': \
         lambda args, rng: \
             FullFullSENN(
                 w_sizes=args.w_sizes,
                 phi_sizes=args.phi_sizes,
                 eta=args.eta,
                 lambdas=args.lambdas,
+                rng=rng),
+    'nn+lrp': \
+        lambda args, rng: \
+            NNWithLRP(
+                w_sizes=args.w_sizes,
+                eta=args.eta,
+                lambdas=args.lambdas,
+                method='lrp.z',
+                method_kwargs={},
                 rng=rng),
 }
 
@@ -36,7 +43,7 @@ def _select_at_random(experiment, model, candidates):
 
 
 def _select_by_margin(experiment, model, candidates):
-    margin = model.predict_margin(experiment.X)
+    margin = model.margin(experiment.X)
     nonzero_margin = np.ones_like(margin) * np.inf
     nonzero_margin[candidates] = margin[candidates]
     return np.argmin(nonzero_margin)
@@ -48,22 +55,14 @@ STRATEGIES = {
 }
 
 
-
-def _move(dst, src, i):
-    dst, src = set(dst), set(src)
-    assert i in src and not i in dst
-    dst = np.array(list(sorted(dst | {i})))
-    src = np.array(list(sorted(src - {i})))
-    return dst, src
-
-
 def _get_correction(experiment, model, args, i):
     x = experiment.X[i]
     z = experiment.Z[i]
     z_hat = model.explain(x.reshape(1, -1)).ravel()
 
     # ignore the bias
-    z_hat[-1] = z[-1]
+    #XXX needed for SENNs
+    #z_hat[-1] = z[-1]
 
     # compute the indices of the n_corrected features with largest diff
     diff = np.abs(z - z_hat)
@@ -75,23 +74,30 @@ def _get_correction(experiment, model, args, i):
     return correction
 
 
-def _run_fold_active(experiment, model, args, kn, tr, ts):
+def _move_indices(dst, src, indices):
+    dst, src = set(dst), set(src)
+    assert all((i in src and not i in dst) for i in indices)
+    dst = np.array(list(sorted(dst | set(indices))))
+    src = np.array(list(sorted(src | set(indices))))
+    return dst, src
+
+
+def _evaluate(experiment, model, i, ts):
+    y_loss_i, z_loss_i = \
+        model.evaluate(experiment.X[i].reshape(1, -1),
+                       experiment.Z[i].reshape(1, -1),
+                       np.array([experiment.y[i]]))
+    y_loss_ts, z_loss_ts = \
+        model.evaluate(experiment.X[ts],
+                       experiment.Z[ts],
+                       experiment.y[ts])
+    return [y_loss_i, z_loss_i, y_loss_ts, z_loss_ts]
+
+
+def _naive_al(experiment, model, kn, tr, ts, args):
     max_iters = args.max_iters
     if max_iters <= 0:
         max_iters = len(tr)
-
-    select_query = STRATEGIES[args.strategy]
-
-    def evaluate(i):
-        xi = experiment.X[i].reshape(1, -1)
-        zi = experiment.Z[i].reshape(1, -1)
-        y_loss_i = model.loss_y(xi, experiment.y[ts])
-        z_loss_i = model.loss_z(xi, zi)
-
-        y_loss_ts = model.loss_y(experiment.X[ts], experiment.y[ts])
-        z_loss_ts = model.loss_z(experiment.X[ts], experiment.Z[ts])
-
-        return y_loss_i, z_loss_i, y_loss_ts, z_loss_ts
 
     model.fit(experiment.X[kn],
               experiment.Z[kn],
@@ -100,6 +106,7 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
               batch_size=args.batch_size,
               warm=False)
 
+    select_query = STRATEGIES[args.strategy]
     corrections, trace = np.zeros_like(experiment.Z), []
     for t in range(max_iters):
         if not len(tr):
@@ -108,7 +115,7 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
         runtime = time()
 
         i = select_query(experiment, model, tr)
-        kn, tr = _move(kn, tr, i)
+        kn, tr = _move_indices(kn, tr, [i])
 
         if args.n_corrected >= 1:
             corrections[i] = _get_correction(experiment, model, args, i)
@@ -139,123 +146,28 @@ def _run_fold_active(experiment, model, args, kn, tr, ts):
 
         runtime = time() - runtime
 
-        trace.append([i] + list(evaluate(i)) + [runtime])
+        trace.append([i] + _evaluate(experiment, model, i, ts) + [runtime])
         print('{:3d} : {}'.format(t, trace[-1]))
 
     return trace
 
 
+ALGORITHMS = {
+    'naive': _naive_al,
+}
+
+
 def eval_active(experiment, args):
     rng = np.random.RandomState(args.seed)
+
+    algo = ALGORITHMS[args.algorithm]
     model = MODELS[args.model](args, rng)
 
     traces = []
     for k, (kn, tr, ts) in enumerate(experiment.split(n_splits=args.n_splits,
                                                       prop_known=args.prop_known)):
         print('fold {} : #kn {}, #tr {}, #ts {}'.format(k + 1, len(kn), len(tr), len(ts)))
-        traces.append(_run_fold_active(experiment, model, args, kn, tr, ts))
-
-    return traces
-
-
-def _whatever_at_k(z_senn, z_lime, k):
-    # prop of best k elements in z_lime that are in z_senn
-    highest_lime = set(np.argsort(z_lime)[-k:]) # indices of k largest elements
-    highest_senn = set(np.argsort(z_senn)[-k:]) # indices of k largest elements
-    return len(highest_lime & highest_senn)
-
-
-def eval_passive(experiment, args):
-    rng = np.random.RandomState(args.seed)
-    model = MODELS[args.model](args, rng)
-    basename = _get_basename(args)
-
-    split = StratifiedShuffleSplit(n_splits=args.n_splits,
-                                   test_size=args.prop_known,
-                                   random_state=rng)
-
-    traces = []
-    for k, (tr, ts) in enumerate(split.split(experiment.X, experiment.y)):
-        print('fold {} : #tr {}, #ts {}'.format(k + 1, len(tr), len(ts)))
-
-        selection = rng.choice(ts, size=10)
-
-        def callback(epoch, model):
-            if epoch % 250 != 0:
-                return
-
-            perf = []
-            for X, Z, y in (
-                (experiment.X[ts], experiment.Z[ts], experiment.y[ts]),
-                (experiment.X[tr], experiment.Z[tr], experiment.y[tr])):
-
-                yhat = model.predict(X)
-
-                y_loss = model.loss_y(X, y)
-                z_loss = model.loss_z(X, Z)
-                y_perf = list(prfs(y, yhat, average='binary')[:3])
-
-                perf.extend(y_perf + [y_loss, z_loss])
-
-            #print(Z[0])
-            #print(Z_hat[0])
-
-            if args.experiment.startswith('color') and args.record_lime:
-
-                similarities, dispersions, times_senn, times_lime = [], [], [], []
-                for i in selection:
-                    x = experiment.X[i].reshape(1, -1)
-
-                    z_senn, t_senn = model.explain(x, return_runtime=True)
-                    z_senn = z_senn.ravel()
-                    z_lime, Z_lime, t_lime = \
-                        experiment.explain_lime(model, tr, i,
-                                                n_repeats=args.lime_repeats,
-                                                n_samples=args.lime_samples,
-                                                n_features=args.lime_features)
-                    times_senn.append(t_senn)
-                    times_lime.append(t_lime)
-
-                    n_nonzeros = len(np.nonzero(z_lime)[0])
-                    similarities.append(_whatever_at_k(z_senn, z_lime, n_nonzeros))
-
-                    n_repeats = len(Z_lime)
-                    dispersions.append(1 / (n_repeats * (n_repeats - 1)) * \
-                                       np.sum(pairwise_distances(Z_lime, Z_lime)))
-
-                    path = basename + '__fold={}__instance={}__epoch={}'.format(k, i, epoch)
-                    experiment.dump_explanation(path + '_senn.png',
-                                                experiment.X[i],
-                                                experiment.Z[i],
-                                                z_senn)
-                    experiment.dump_explanation(path + '_lime.png',
-                                                experiment.X[i],
-                                                experiment.Z[i],
-                                                z_lime)
-
-                perf.extend([
-                    np.mean(similarities),
-                    np.mean(dispersions),
-                    np.mean(times_senn),
-                    np.mean(times_lime),
-                ])
-
-            print('epoch {} : {}'.format(epoch, perf))
-            return perf
-
-        trace = model.fit(experiment.X[tr],
-                          experiment.Z[tr],
-                          experiment.y[tr],
-                          n_epochs=args.n_epochs,
-                          batch_size=args.batch_size,
-                          callback=callback,
-                          warm=False)
-        traces.append(trace)
-
-        if args.experiment.startswith('xor'):
-            print('Plotting...')
-            path = basename + '__fold{}.png'.format(k)
-            plot_xor(path, experiment, model)
+        traces.append(algo(experiment, model, kn, tr, ts, args))
 
     return traces
 
@@ -263,7 +175,6 @@ def eval_passive(experiment, args):
 def _get_basename(args):
     fields = [
         ('strategy', args.strategy),
-        ('passive', args.passive),
         ('n', args.n_examples),
         ('k', args.n_splits),
         ('p', args.prop_known),
@@ -278,13 +189,6 @@ def _get_basename(args):
         ('s', args.seed),
     ]
 
-    if args.record_lime:
-        fields += [
-            ('limer', args.lime_repeats),
-            ('limes', args.lime_samples),
-            ('limef', args.lime_features),
-        ]
-
     basename = args.experiment + '__' + '__'.join([name + '=' + str(value)
                                                    for name, value in fields])
     return join('results', basename)
@@ -295,14 +199,14 @@ def main():
 
     fmt_class = argparse.ArgumentDefaultsHelpFormatter
     parser = argparse.ArgumentParser(formatter_class=fmt_class)
+    parser.add_argument('algorithm', choices=sorted(ALGORITHMS.keys()),
+                        help='name of the active learning algorithm')
     parser.add_argument('experiment', choices=sorted(EXPERIMENTS.keys()),
                         help='name of the experiment')
     parser.add_argument('model', type=str, choices=sorted(MODELS.keys()),
                         help='The model to use')
     parser.add_argument('--strategy', choices=sorted(STRATEGIES.keys()),
                         default='random', help='The query selection strategy')
-    parser.add_argument('--passive', action='store_true',
-                        help='Stick to passive learning')
     parser.add_argument('-s', '--seed', type=int, default=0,
                         help='RNG seed')
 
@@ -312,9 +216,7 @@ def main():
     group.add_argument('-k', '--n-splits', type=int, default=10,
                        help='Number of cross-validation folds')
     group.add_argument('-p', '--prop-known', type=float, default=0.05,
-                       help='Proportion of passively known examples; '
-                            'It is used as the proportion of test '
-                            'examples when using --passive')
+                       help='Proportion of examples known before interaction')
     group.add_argument('-c', '--n-corrected', type=int, default=1,
                        help='Proportion of features corrected at each '
                             'iteration')
@@ -337,16 +239,6 @@ def main():
     group.add_argument('-B', '--batch-size', type=int, default=None,
                        help='Batch size')
 
-    group = parser.add_argument_group('LIME (colors{0,1} only)')
-    group.add_argument('--record-lime', action='store_true',
-                       help='Record LIME performance')
-    group.add_argument('--lime-repeats', type=int, default=1,
-                       help='Number of times LIME is called')
-    group.add_argument('--lime-samples', type=int, default=100,
-                       help='Number of samples used by LIME')
-    group.add_argument('--lime-features', type=int, default=None,
-                       help='Number of features LIME can use at most')
-
     args = parser.parse_args()
     basename = _get_basename(args)
 
@@ -360,10 +252,7 @@ def main():
     experiment = EXPERIMENTS[args.experiment](n_examples=args.n_examples,
                                               rng=args.seed)
 
-    if args.passive:
-        traces = eval_passive(experiment, args)
-    else:
-        traces = eval_active(experiment, args)
+    traces = eval_active(experiment, args)
     dump(basename + '__trace.pickle', {
              'args': args,
              'traces': traces,

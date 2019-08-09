@@ -4,13 +4,15 @@ from tensorflow.python.ops.parallel_for.gradients import batch_jacobian
 from tensorflow.losses import log_loss
 from tensorflow.train import AdamOptimizer
 from sklearn.utils import check_random_state
-from time import time
+from abc import ABC, abstractmethod
+
+from . import Classifier
 
 
 _CHECKPOINT = '/tmp/senn.ckpt'
 
 
-class SENN:
+class SENN(Classifier):
     """A tensorflow implementation of Self-Explaining Neural Networks (SENNs).
 
     x can have any range; it should have a bias term.
@@ -33,16 +35,20 @@ class SENN:
         self.rng = check_random_state(kwargs.pop('rng', None))
         assert all(l >= 0 for l in self.lambdas) and sum(self.lambdas) <= 1
 
-    def _build_subnets(self, x):
-        raise NotImplementedError()
 
-    def _build(self, n_inputs):
+    @abstractmethod
+    def build_subnets(self, x):
+        """Builds the w(x) and phi(x) networks."""
+        pass
+
+
+    def build(self, n_inputs):
         # Build the input/output variables
         x = tf.placeholder(shape=[None, n_inputs], name='x', dtype=tf.float32)
         y = tf.placeholder(shape=[None, 1], name='y', dtype=tf.float32)
 
         # Build the model
-        w, phi = self._build_subnets(x)
+        w, phi = self.build_subnets(x)
         n_hidden = int(w.shape[1])
         assert phi.shape[1] == n_hidden, \
             'w(x) and phi(x) have incompatible shapes: {} {}'.format(w.shape, phi.shape)
@@ -64,23 +70,8 @@ class SENN:
         w_times_jacob_phi = tf.einsum('boi,bo->bi', jacob_phi, w)
         reg_z = tf.reduce_sum(tf.squared_difference(grad_f, w_times_jacob_phi))
 
-        # Build the optimizers
-        l0, l1, l2 = 1 - sum(self.lambdas), self.lambdas[0], self.lambdas[1]
-        self.train_op_y = AdamOptimizer(self.eta) \
-                              .minimize(l0 * loss_y + l2 * reg_z)
-        self.train_op_z = AdamOptimizer(self.eta) \
-                              .minimize(l1 * loss_z + l2 * reg_z)
-        self.train_op_y_z = AdamOptimizer(self.eta) \
-                                .minimize(l0 * loss_y + l1 * loss_z + l2 * reg_z)
-
-        # Build the tensorflow session
-        self.session = tf.Session()
-        self.session.run(tf.global_variables_initializer())
-
-        self._saver = tf.train.Saver()
-        self._saver.save(self.session, _CHECKPOINT)
-
-        self.tf_vars = {
+        # Store all variables
+        tf_vars = {
             'x': x,
             'z': z,
             'y': y,
@@ -93,17 +84,41 @@ class SENN:
             'reg_z': reg_z,
         }
 
-    def fit(self, X, Z, y, n_epochs=100, batch_size=None, callback=None,
+        # Build the optimizers
+        l0, l1, l2 = 1 - sum(self.lambdas), self.lambdas[0], self.lambdas[1]
+        train_ops = {
+            'xy': AdamOptimizer(self.eta) \
+                        .minimize(l0 * loss_y + l2 * reg_z),
+            'xz': AdamOptimizer(self.eta) \
+                        .minimize(l1 * loss_z + l2 * reg_z),
+            'xzy': AdamOptimizer(self.eta) \
+                        .minimize(l0 * loss_y + l1 * loss_z + l2 * reg_z),
+        }
+
+        return tf_vars, train_ops
+
+
+    def fit(self, X, Z, y,
+            batch_size=None,
+            n_epochs=1,
+            callback=None,
             warm=True):
+        n_examples, n_inputs = X.shape
 
         if not hasattr(self, 'session'):
-            self._build(X.shape[1])
+            self.tf_vars, self.train_ops = self.build(n_inputs)
+
+            self.session = tf.Session()
+            self.session.run(tf.global_variables_initializer())
+
+            self.saver = tf.train.Saver()
+            self.saver.save(self.session, _CHECKPOINT)
 
         if not warm:
-            self._saver.restore(self.session, _CHECKPOINT)
+            self.saver.restore(self.session, _CHECKPOINT)
 
         if not batch_size:
-            batch_size = int(np.sqrt(X.shape[0]))
+            batch_size = int(np.sqrt(n_examples))
 
         trace = []
         for epoch in range(n_epochs):
@@ -119,42 +134,25 @@ class SENN:
                     self.tf_vars['x']: X[batch],
                     self.tf_vars['y']: y[batch].reshape(-1, 1),
                 }
-                train_op = self.train_op_y
+                train_op = self.train_ops['xy']
             elif y is None:
                 feed_dict = {
                     self.tf_vars['x']: X[batch],
                     self.tf_vars['z']: Z[batch],
                 }
-                train_op = self.train_op_z
+                train_op = self.train_ops['xz']
             else:
                 feed_dict = {
                     self.tf_vars['x']: X[batch],
                     self.tf_vars['z']: Z[batch],
                     self.tf_vars['y']: y[batch].reshape(-1, 1),
                 }
-                train_op = self.train_op_y_z
+                train_op = self.train_ops['xzy']
 
             self.session.run(train_op, feed_dict=feed_dict)
 
         return trace
 
-    def loss_y(self, X, y):
-        assert hasattr(self, 'session'), 'fit the model first'
-        feed_dict = {
-            self.tf_vars['x']: X,
-            self.tf_vars['y']: y.reshape(-1, 1),
-        }
-        return self.session.run(self.tf_vars['loss_y'], feed_dict=feed_dict)
-
-    def loss_z(self, X, Z):
-        assert hasattr(self, 'session'), 'fit the model first'
-        if Z is None:
-            return -1.0
-        feed_dict = {
-            self.tf_vars['x']: X,
-            self.tf_vars['z']: Z,
-        }
-        return self.session.run(self.tf_vars['loss_z'], feed_dict=feed_dict)
 
     def predict(self, X, return_dot=False, discretize=True):
         assert hasattr(self, 'session'), 'fit the model first'
@@ -165,21 +163,25 @@ class SENN:
             y_pred = (0.5 * (np.sign(y_pred - 0.5) + 1)).astype(int)
         return (y_pred, dot) if return_dot else y_pred
 
-    def predict_proba(self, X):
-        y_pred = self.predict(X, discretize=False)
-        return np.hstack((1 - y_pred, y_pred))
 
-    def predict_margin(self, X, which='labels'):
-        return np.min(self.predict_proba(X), axis=1)
-
-    def explain(self, X, return_runtime=False):
-        runtime = time()
+    def explain(self, X):
+        # TODO do not return bias, it is irrelevant
         feed_dict = {self.tf_vars['x']: X}
         z = self.session.run(self.tf_vars['w'], feed_dict=feed_dict)
-        runtime = time() - runtime
-        if return_runtime:
-            return z, runtime
         return z
+
+
+    def evaluate(self, X, Z, y, which='both'):
+        assert hasattr(self, 'session'), 'fit the model first'
+        feed_dict = {
+            self.tf_vars['x']: X,
+            self.tf_vars['z']: Z,
+            self.tf_vars['y']: y.reshape(-1, 1),
+        }
+        loss_y, loss_z = self.session.run((self.tf_vars['loss_y'],
+                                           self.tf_vars['loss_z']),
+                                          feed_dict=feed_dict)
+        return {'both': (loss_y, loss_z), 'y': loss_y, 'z': loss_z}[which]
 
 
 class FullFullSENN(SENN):
@@ -190,7 +192,8 @@ class FullFullSENN(SENN):
         self.phi_sizes = kwargs.pop('phi_sizes', [])
         super().__init__(**kwargs)
 
-    def _build_subnets(self, x):
+
+    def build_subnets(self, x):
         w = x
         for l, units in enumerate(self.w_sizes or []):
             w = tf.layers.dense(w,
