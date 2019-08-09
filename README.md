@@ -48,6 +48,7 @@ python draw.py active-deeper-colors0 -s q3 results-colors-active-partialz/result
 * `python >= 3.5`
 * `sklearn >= 0.21.0`
 * `tensorflow >= 1.13.1`
+* `lime >= 0.1.1`
 
 Older versions may also work.
 
