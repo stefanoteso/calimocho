@@ -1,5 +1,6 @@
 import numpy as np
 import tensorflow as tf
+from innvestigate.analyzer import analyzers
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.metrics import precision_recall_fscore_support as prfs
 from sklearn.metrics import pairwise_distances
@@ -32,7 +33,7 @@ MODELS = {
                 w_sizes=args.w_sizes,
                 eta=args.eta,
                 lambdas=args.lambdas,
-                method='lrp.z',
+                method=args.explainer,
                 method_kwargs={},
                 rng=rng),
 }
@@ -57,14 +58,21 @@ STRATEGIES = {
 }
 
 
+def _move_indices(dst, src, indices):
+    dst, src = set(dst), set(src)
+    assert all((i in src and i not in dst) for i in indices)
+    dst = np.array(list(sorted(dst | set(indices))))
+    src = np.array(list(sorted(src - set(indices))))
+    return dst, src
+
+
 def _get_correction(experiment, model, args, i):
     x = experiment.X[i]
     z = experiment.Z[i]
     z_hat = model.explain(x.reshape(1, -1)).ravel()
 
     # ignore the bias
-    #XXX needed for SENNs
-    #z_hat[-1] = z[-1]
+    z_hat[-1] = z[-1]
 
     # compute the indices of the n_corrected features with largest diff
     diff = np.abs(z - z_hat)
@@ -76,31 +84,52 @@ def _get_correction(experiment, model, args, i):
     return correction
 
 
-def _move_indices(dst, src, indices):
-    dst, src = set(dst), set(src)
-    assert all((i in src and i not in dst) for i in indices)
-    dst = np.array(list(sorted(dst | set(indices))))
-    src = np.array(list(sorted(src - set(indices))))
-    return dst, src
-
-
 def _evaluate(experiment, model, i, ts):
+
+    # compute the y and z losses on the query instance
     y_loss_i, z_loss_i = \
         model.evaluate(experiment.X[i].reshape(1, -1),
                        experiment.Z[i].reshape(1, -1),
                        np.array([experiment.y[i]]))
+
+    # compute the y and z losses on the test set
     y_loss_ts, z_loss_ts = \
         model.evaluate(experiment.X[ts],
                        experiment.Z[ts],
                        experiment.y[ts])
+
     return [y_loss_i, z_loss_i, y_loss_ts, z_loss_ts]
 
 
-def _naive_al(experiment, model, kn, tr, ts, args):
+def _naive_al(experiment, model, kn, tr, ts, args, basename):
     max_iters = args.max_iters
     if max_iters <= 0:
         max_iters = len(tr)
 
+    select_query = STRATEGIES[args.strategy]
+
+    if args.passive:
+
+        # Fit an initial model on the known instances
+        model.fit(experiment.X[tr],
+                  experiment.Z[tr],
+                  experiment.y[tr],
+                  n_epochs=args.n_epochs,
+                  batch_size=args.batch_size,
+                  warm=False)
+
+        # Explain the test set and dump the explanations on-disk
+        for i in ts:
+            path = basename + '__t={}__instance={}'.format(0, i)
+            x = experiment.X[i].reshape(1, -1)
+            experiment.dump_explanation(path + '.png',
+                                        experiment.X[i],
+                                        experiment.Z[i],
+                                        model.explain(x).ravel())
+
+        quit()
+
+    # Fit an initial model on the known instances
     model.fit(experiment.X[kn],
               experiment.Z[kn],
               experiment.y[kn],
@@ -108,43 +137,48 @@ def _naive_al(experiment, model, kn, tr, ts, args):
               batch_size=args.batch_size,
               warm=False)
 
-    select_query = STRATEGIES[args.strategy]
+    # Do the active learning dance
+    print('learning...')
     corrections, trace = np.zeros_like(experiment.Z), []
-    for t in range(max_iters):
+    for t in range(1, max_iters + 1):
         if not len(tr):
             break
 
         runtime = time()
 
         i = select_query(experiment, model, tr)
+        x = experiment.X[i].reshape(1, -1)
         kn, tr = _move_indices(kn, tr, [i])
 
-        if args.n_corrected >= 1:
+        if args.n_corrected == 0:
+            # Feed the actual explanation as supervision
+            explanation_feedback = experiment.Z[kn]
+        else:
+            # Gather corrections and feed them as supervision
             corrections[i] = _get_correction(experiment, model, args, i)
             explanation_feedback = -corrections[kn]
-            # c = 2(zhat - z) implies:
-            # min_w <w, w + c>
-            # = min_w <w, w + 2(zhat - z)>
-            # = min_w ||w||^2 + 2<w, zhat - z>
-            # = min_w ||w||^2 + 2<w, zhat - z> + const.
-            # = min_w ||w||^2 + 2<w, zhat - z> + ||z||^2 - ||zhat||^2
-            # = min_w ||w||^2 - 2<w, z> + ||z||^2 + 2<w, zhat> - ||zhat||^2
-            # = min_w ||w||^2 + ||w||^2 - 2<w, z> + ||z||^2 - ||w||^2 + 2<w, zhat> - ||zhat||^2
-            # = min_w ||w||^2 + ||w - z||^2 - ||w - zhat||^2
-        else:
-            explanation_feedback = experiment.Z[kn]
-            # c = -2z implies:
-            # <w, w + c>
-            # = <w, w - 2z>
-            # = ||w||^2 - 2<w, z>
-            # = ||w - z||^2 + const.
 
+        path = basename + '__t={}__instance={}'.format(t, i)
+
+        # Dump the explanation of the query instance before training
+        experiment.dump_explanation(path + '__0.png',
+                                    experiment.X[i],
+                                    experiment.Z[i],
+                                    model.explain(x).ravel())
+
+        # Re-train the model on all the supervision
         model.fit(experiment.X[kn],
                   explanation_feedback,
                   experiment.y[kn],
                   n_epochs=args.n_epochs,
                   batch_size=args.batch_size,
                   warm=True)
+
+        # Dump the explanation of the query instance after training
+        experiment.dump_explanation(path + '__1.png',
+                                    experiment.X[i],
+                                    experiment.Z[i],
+                                    model.explain(x).ravel())
 
         runtime = time() - runtime
 
@@ -159,7 +193,7 @@ ALGORITHMS = {
 }
 
 
-def eval_active(experiment, args):
+def eval_active(experiment, args, basename):
     rng = np.random.RandomState(args.seed)
 
     algo = ALGORITHMS[args.algorithm]
@@ -169,13 +203,18 @@ def eval_active(experiment, args):
     for k, (kn, tr, ts) in enumerate(experiment.split(n_splits=args.n_splits,
                                                       prop_known=args.prop_known)):
         print('fold {} : #kn {}, #tr {}, #ts {}'.format(k + 1, len(kn), len(tr), len(ts)))
-        traces.append(algo(experiment, model, kn, tr, ts, args))
+        traces.append(algo(experiment, model, kn, tr, ts, args,
+                           basename + '__fold={}'.format(k)))
 
     return traces
 
 
 def _get_basename(args):
-    fields = [
+    fields = [('model', args.model)]
+    if args.model != 'senn':
+        fields.append(('explainer', args.explainer))
+
+    fields.extend([
         ('strategy', args.strategy),
         ('n', args.n_examples),
         ('k', args.n_splits),
@@ -189,7 +228,7 @@ def _get_basename(args):
         ('E', args.n_epochs),
         ('B', args.batch_size),
         ('s', args.seed),
-    ]
+    ])
 
     basename = args.experiment + '__' + '__'.join([name + '=' + str(value)
                                                    for name, value in fields])
@@ -213,6 +252,8 @@ def main():
                         help='RNG seed')
 
     group = parser.add_argument_group('Evaluation')
+    group.add_argument('--passive', action='store_true',
+                       help='Learn on training set, dump explanations, quit')
     group.add_argument('-n', '--n-examples', type=int, default=None,
                        help='Only use this many examples from the dataset')
     group.add_argument('-k', '--n-splits', type=int, default=10,
@@ -226,6 +267,8 @@ def main():
                        help='Maximum number of learning iterations')
 
     group = parser.add_argument_group('Model')
+    group.add_argument('-X', '--explainer', choices=sorted(analyzers.keys()),
+                       help='Explainer.  Only valid for nn+lrp.')
     group.add_argument('-W', '--w-sizes', type=int, nargs='+', default=[],
                        help='Shapes of the hidden layers for w. '
                             'If empty, w(x) = x.')
@@ -254,7 +297,7 @@ def main():
     experiment = EXPERIMENTS[args.experiment](n_examples=args.n_examples,
                                               rng=args.seed)
 
-    traces = eval_active(experiment, args)
+    traces = eval_active(experiment, args, basename)
     dump(basename + '__trace.pickle', {
              'args': args,
              'traces': traces,

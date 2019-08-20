@@ -120,6 +120,8 @@ class SENN(Classifier):
         if not batch_size:
             batch_size = int(np.sqrt(n_examples))
 
+        # FIXME this is wrong: n_epochs behaves more like n_batches
+
         trace = []
         for epoch in range(n_epochs):
 

@@ -54,13 +54,6 @@ class NNWithLRP(Classifier):
                 model.add(Dense(size, activation='relu'))
         model.add(Dense(2, activation='softmax'))
 
-        if False:
-            # XXX do we need this?
-            model.compile(optimizer='adam',
-                          loss='categorical_crossentropy')
-            X, y = X[:3], y[:3]
-            model.fit(X, y, verbose=0)
-
         # Add LRP (or other explainer) layers to the base model
         uncapped_model = iutils.keras.graph.model_wo_softmax(model)
         analyzer = innvestigate.create_analyzer(self.method,
