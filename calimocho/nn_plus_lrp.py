@@ -112,8 +112,12 @@ class NNWithLRP(Classifier):
                             verbose=0)
 
 
-    def predict(self, X):
-        return self.twin_model.predict_on_batch(X)[0]
+    def predict(self, X, discretize=False):
+        y_pred = self.twin_model.predict_on_batch(X)[0][:,1] # second column
+        if discretize:
+            sign = np.sign(y_pred - 0.5)
+            y_pred = (0.5 * sign + 0.5).astype(int)
+        return y_pred.reshape(-1, 1)
 
 
     def explain(self, X):

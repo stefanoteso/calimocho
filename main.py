@@ -46,7 +46,9 @@ def _select_by_margin(experiment, model, candidates):
     margin = model.margin(experiment.X)
     nonzero_margin = np.ones_like(margin) * np.inf
     nonzero_margin[candidates] = margin[candidates]
-    return np.argmin(nonzero_margin)
+    i = np.argmin(nonzero_margin)
+    assert i in candidates
+    return i
 
 
 STRATEGIES = {
@@ -76,9 +78,9 @@ def _get_correction(experiment, model, args, i):
 
 def _move_indices(dst, src, indices):
     dst, src = set(dst), set(src)
-    assert all((i in src and not i in dst) for i in indices)
+    assert all((i in src and i not in dst) for i in indices)
     dst = np.array(list(sorted(dst | set(indices))))
-    src = np.array(list(sorted(src | set(indices))))
+    src = np.array(list(sorted(src - set(indices))))
     return dst, src
 
 

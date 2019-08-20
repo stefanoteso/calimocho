@@ -18,7 +18,7 @@ class Classifier(ABC):
 
 
     @abstractmethod
-    def predict(self, X, return_dot=False, discretize=True):
+    def predict(self, X, discretize=True):
         """Computes a prediction for every instance."""
         pass
 

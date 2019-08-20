@@ -154,14 +154,15 @@ class SENN(Classifier):
         return trace
 
 
-    def predict(self, X, return_dot=False, discretize=True):
+    def predict(self, X, discretize=True):
         assert hasattr(self, 'session'), 'fit the model first'
         feed_dict = {self.tf_vars['x']: X}
-        y_pred, dot = self.session.run((self.tf_vars['f'], self.tf_vars['dot']),
-                                       feed_dict=feed_dict)
+        y_pred = self.session.run(self.tf_vars['f'],
+                                  feed_dict=feed_dict)
         if discretize:
-            y_pred = (0.5 * (np.sign(y_pred - 0.5) + 1)).astype(int)
-        return (y_pred, dot) if return_dot else y_pred
+            sign = np.sign(y_pred - 0.5)
+            y_pred = (0.5 * sign + 0.5).astype(int)
+        return y_pred
 
 
     def explain(self, X):
