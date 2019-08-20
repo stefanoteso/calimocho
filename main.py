@@ -268,6 +268,7 @@ def main():
 
     group = parser.add_argument_group('Model')
     group.add_argument('-X', '--explainer', choices=sorted(analyzers.keys()),
+                       default='lrp.epsilon',
                        help='Explainer.  Only valid for nn+lrp.')
     group.add_argument('-W', '--w-sizes', type=int, nargs='+', default=[],
                        help='Shapes of the hidden layers for w. '
