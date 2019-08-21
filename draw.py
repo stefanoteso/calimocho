@@ -30,25 +30,26 @@ def _get_style(args, trace_args):
 
 def _draw(args, traces, traces_args):
 
-    NAMES = [
-        'query index',
-        '$y$ loss on query',
-        '$z$ loss on query',
-        '$y$ loss on test',
-        '$z$ loss on test',
-        'runtime',
+    CONFIGS = [
+        ('query index', 0),
+        ('$y$ loss on query', 0),
+        ('$z$ loss on query', 0),
+        ('$y$ loss on test', 0),
+        ('$z$ loss on test', 0),
+        ('runtime', 0),
     ]
 
     n_pickles, n_folds, n_iters, n_measures = traces.shape
-    assert n_measures == len(NAMES)
+    assert n_measures == len(CONFIGS)
 
     fig, axes = plt.subplots(n_measures, 1, figsize=(5, n_measures*3))
 
     for m, ax in enumerate(axes):
-        ax.set_xlabel('Epochs')
-        ax.set_ylabel(NAMES[m])
+        name, max_y = CONFIGS[m]
 
-        max_y = 1
+        ax.set_xlabel('Epochs')
+        ax.set_ylabel(name)
+
         for p in range(n_pickles):
             perf = traces[p, :, :, m]
             label, color, linestyle = _get_style(args, trace_args[p])
@@ -62,12 +63,12 @@ def _draw(args, traces, traces_args):
             ax.fill_between(x, y - yerr, y + yerr,
                             color=color, alpha=0.35, linewidth=0)
 
-            max_y = max(max_y, y.max() + 0.1)
+            max_y = max(max_y, 1.1 * y.max())
 
         ax.set_ylim(0, max_y)
         ax.legend(loc='upper right', fontsize=8, shadow=False)
 
-    fig.savefig(args.basename + '__{}.png'.format(NAMES[m]),
+    fig.savefig(args.basename + '.png',
                 bbox_inches='tight',
                 pad_inches=0)
     del fig
