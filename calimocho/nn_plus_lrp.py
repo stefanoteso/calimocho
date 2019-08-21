@@ -112,7 +112,7 @@ class NNWithLRP(Classifier):
                             [y, Z],
                             epochs=n_epochs,
                             batch_size=batch_size,
-                            verbose=1)
+                            verbose=0)
 
 
     def predict(self, X, discretize=True):
