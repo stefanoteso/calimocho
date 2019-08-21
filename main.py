@@ -200,7 +200,8 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
         runtime = time() - runtime
 
         trace.append([i] + _evaluate(experiment, model, i, ts) + [runtime])
-        print('{:3d} : {}'.format(t, trace[-1]))
+        message = ' '.join(['{:5.3f}'.format(s) for s in trace[-1][1:]])
+        print('{:3d} : {}'.format(t, message))
 
     return trace
 
