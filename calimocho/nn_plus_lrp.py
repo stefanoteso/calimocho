@@ -2,7 +2,6 @@ import numpy as np
 import tensorflow as tf
 from keras.models import Model, Sequential
 from keras.layers import Dense, Flatten
-from keras.losses import binary_crossentropy
 from keras.utils import to_categorical, plot_model
 import innvestigate
 import innvestigate.utils as iutils
