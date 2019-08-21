@@ -83,12 +83,11 @@ def _get_correction(experiment, model, args, i):
     indices = np.argsort(diff)[::-1][:args.n_corrected]
 
     # discretize the difference
-    correction = np.zeros_like(diff)
-    correction[indices] = np.sign(z - z_hat)[indices]
+    correction, mask = np.zeros_like(diff), np.zeros_like(diff)
+    correction[indices] = z[indices]
+    mask[indices] = 1
 
-    mask = np.zeros_like
-
-    return -correction
+    return correction, mask
 
 
 def _evaluate(experiment, model, i, ts):
