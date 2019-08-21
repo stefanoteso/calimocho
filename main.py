@@ -66,10 +66,7 @@ def _move_indices(dst, src, indices):
 
 
 def _get_correction(experiment, model, args, i):
-
-    if args.n_corrected == 0:
-        # Feed the actual explanation as supervision
-        return experiment.Z[i], np.ones_like(experiment.Z[i])
+    assert args.prop_corrected >= 0, 'prop_corrected must be non-negative'
 
     z = experiment.Z[i]
     z_hat = model.explain(experiment.X[i].reshape(1, -1)).ravel()
@@ -80,7 +77,15 @@ def _get_correction(experiment, model, args, i):
     # compute the indices of the n_corrected features with largest diff
     # XXX in principle the choice should be noisy
     diff = np.abs(z - z_hat)
-    indices = np.argsort(diff)[::-1][:args.n_corrected]
+    n_inputs = diff.shape[0]
+
+    if args.prop_corrected > 1:
+        n_corrected = args.prop_corrected
+        assert n_corrected <= n_inputs
+    else:
+        n_corrected = int(np.round(n_inputs * args.prop_corrected))
+
+    indices = np.argsort(diff)[::-1][:n_corrected]
 
     # discretize the difference
     correction, mask = np.zeros_like(diff), np.zeros_like(diff)
@@ -236,7 +241,7 @@ def _get_basename(args):
         ('n', args.n_examples),
         ('k', args.n_splits),
         ('p', args.prop_known),
-        ('c', args.n_corrected),
+        ('c', args.prop_corrected),
         ('T', args.max_iters),
         ('W', ','.join(map(str, args.w_sizes))),
         ('P', ','.join(map(str, args.phi_sizes))),
@@ -277,7 +282,7 @@ def main():
                        help='Number of cross-validation folds')
     group.add_argument('-p', '--prop-known', type=float, default=0.05,
                        help='Proportion of examples known before interaction')
-    group.add_argument('-c', '--n-corrected', type=int, default=1,
+    group.add_argument('-c', '--prop-corrected', type=float, default=1.0,
                        help='Proportion of features corrected at each '
                             'iteration')
     group.add_argument('-T', '--max-iters', type=int, default=100,
