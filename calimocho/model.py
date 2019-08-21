@@ -9,6 +9,7 @@ class Classifier(ABC):
 
     @abstractmethod
     def fit(self, X, Z, y,
+            mask=None,
             batch_size=None,
             n_epochs=1,
             callback=None,

@@ -66,21 +66,29 @@ def _move_indices(dst, src, indices):
 
 
 def _get_correction(experiment, model, args, i):
-    x = experiment.X[i]
+
+    if args.n_corrected == 0:
+        # Feed the actual explanation as supervision
+        return experiment.Z[i], np.ones_like(experiment.Z[i])
+
     z = experiment.Z[i]
-    z_hat = model.explain(x.reshape(1, -1)).ravel()
+    z_hat = model.explain(experiment.X[i].reshape(1, -1)).ravel()
 
     # ignore the bias
     z_hat[-1] = z[-1]
 
     # compute the indices of the n_corrected features with largest diff
+    # XXX in principle the choice should be noisy
     diff = np.abs(z - z_hat)
     indices = np.argsort(diff)[::-1][:args.n_corrected]
 
     # discretize the difference
     correction = np.zeros_like(diff)
-    correction[indices] = np.sign(z_hat - z)[indices]
-    return correction
+    correction[indices] = np.sign(z - z_hat)[indices]
+
+    mask = np.zeros_like
+
+    return -correction
 
 
 def _evaluate(experiment, model, i, ts):
@@ -129,7 +137,7 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
 
         # Explain the test set and dump the explanations on-disk
         for i in ts:
-            path = basename + '__t={}__instance={}'.format(0, i)
+            path = basename + '__instance={}'.format(i)
             x = experiment.X[i].reshape(1, -1)
             experiment.dump_explanation(path + '.png',
                                         experiment.X[i],
@@ -148,25 +156,25 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
 
     # Do the active learning dance
     print('learning...')
-    corrections, trace = np.zeros_like(experiment.Z), []
+    corrections = np.zeros_like(experiment.Z)
+    corrections_mask = np.zeros_like(experiment.Z)
+
+    trace = []
     for t in range(1, max_iters + 1):
         if not len(tr):
             break
 
         runtime = time()
 
+        # Select a query instance
         i = select_query(experiment, model, tr)
-        x = experiment.X[i].reshape(1, -1)
         kn, tr = _move_indices(kn, tr, [i])
 
-        if args.n_corrected == 0:
-            # Feed the actual explanation as supervision
-            explanation_feedback = experiment.Z[kn]
-        else:
-            # Gather corrections and feed them as supervision
-            corrections[i] = _get_correction(experiment, model, args, i)
-            explanation_feedback = -corrections[kn]
+        # Retrieve an explanation correction for this instance
+        corrections[i], corrections_mask[i] = \
+            _get_correction(experiment, model, args, i)
 
+        x = experiment.X[i].reshape(1, -1)
         path = basename + '__t={}__instance={}'.format(t, i)
 
         # Dump the explanation of the query instance before training
@@ -177,7 +185,7 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
 
         # Re-train the model on all the supervision
         model.fit(experiment.X[kn],
-                  explanation_feedback,
+                  corrections[kn],
                   experiment.y[kn],
                   n_epochs=args.n_epochs,
                   batch_size=args.batch_size,

@@ -1,8 +1,9 @@
 import numpy as np
 import tensorflow as tf
 from keras.models import Model, Sequential
-from keras.layers import Dense, Flatten
+from keras.layers import Dense, Input, multiply
 from keras.utils import to_categorical, plot_model
+import keras.backend as K
 import innvestigate
 import innvestigate.utils as iutils
 from sklearn.utils import check_random_state
@@ -42,16 +43,14 @@ class NNWithLRP(Classifier):
         assert all(l >= 0 for l in self.lambdas) and sum(self.lambdas) <= 1
 
 
-    def _build(self, X, y):
+    def _build(self, n_inputs):
 
         # Build the base model
-        model = Sequential()
+        k_h = k_x = Input(shape=(n_inputs,), name='x')
         for l, size in enumerate(self.w_sizes):
-            if l == 0:
-                model.add(Dense(size, input_dim=X.shape[1], activation='relu'))
-            else:
-                model.add(Dense(size, activation='relu'))
-        model.add(Dense(2, activation='softmax'))
+            k_h = Dense(size, activation='relu', name='h{}'.format(l))(k_h)
+        k_y = Dense(2, activation='softmax', name='y')(k_h)
+        model = Model(inputs=[k_x], outputs=[k_y])
 
         # Add LRP (or other explainer) layers to the base model
         uncapped_model = iutils.keras.graph.model_wo_softmax(model)
@@ -63,14 +62,22 @@ class NNWithLRP(Classifier):
         assert (len(analyzer._analysis_inputs) == 0
                 and analyzer._n_constant_input == 0
                 and analyzer._n_debug_output == 0)
+        assert len(analyzer_model.outputs) == 1
+        k_z = analyzer_model.outputs[0]
 
         # Create a model that outputs both predictions and explanations
+        k_mask = Input(shape=(n_inputs,), name='mask')
+        k_masked_z = multiply([k_z, k_mask], name='masked_z')
+
+        twin_model = Model(inputs=[k_x, k_mask], outputs=[k_y, k_masked_z])
+        losses = [
+            'categorical_crossentropy',
+            'mean_squared_error',
+        ]
+
         l0, l1, l2 = 1 - sum(self.lambdas), self.lambdas[0], self.lambdas[1]
-        twin_model = Model(inputs=model.inputs,
-                           outputs=model.outputs + analyzer_model.outputs)
         twin_model.compile(optimizer='adam',
-                           loss=['categorical_crossentropy',
-                                 'mean_squared_error'],
+                           loss=losses,
                            loss_weights=[l0, l1])
 
         if False:
@@ -85,6 +92,7 @@ class NNWithLRP(Classifier):
 
 
     def fit(self, X, Z, y,
+            mask=None,
             batch_size=None,
             n_epochs=1,
             callback=None,
@@ -92,21 +100,24 @@ class NNWithLRP(Classifier):
         y = to_categorical(y, num_classes=2)
 
         if not hasattr(self, 'twin_model'):
-            self.twin_model = self._build(X, y)
+            self.twin_model = self._build(X.shape[1])
             self.twin_model.save_weights(_CHECKPOINT)
 
         if not warm:
             self.twin_model.load_weights(_CHECKPOINT)
 
-        self.twin_model.fit(X,
+        if mask is None:
+            mask = np.ones_like(X)
+        self.twin_model.fit([X, mask],
                             [y, Z],
                             epochs=n_epochs,
                             batch_size=batch_size,
-                            verbose=0)
+                            verbose=1)
 
 
     def predict(self, X, discretize=True):
-        y_pred = self.twin_model.predict_on_batch(X)[0][:,1] # second column
+        mask = np.ones_like(X)
+        y_pred = self.twin_model.predict_on_batch([X, mask])[0][:,1] # second column
         if discretize:
             sign = np.sign(y_pred - 0.5)
             y_pred = (0.5 * sign + 0.5).astype(int)
@@ -114,10 +125,13 @@ class NNWithLRP(Classifier):
 
 
     def explain(self, X):
-        return self.twin_model.predict_on_batch(X)[1]
+        mask = np.ones_like(X)
+        return self.twin_model.predict_on_batch([X, mask])[1]
 
 
     def evaluate(self, X, Z, y, which='both'):
         y = to_categorical(y, num_classes=2)
-        loss, loss_y, loss_z = self.twin_model.evaluate(X, [y, Z], verbose=0)
+        mask = np.ones_like(X)
+        loss, loss_y, loss_z = \
+            self.twin_model.evaluate([X, mask], [y, Z], verbose=0)
         return {'both': (loss_y, loss_z), 'y': loss_y, 'z': loss_z}[which]

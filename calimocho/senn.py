@@ -99,11 +99,14 @@ class SENN(Classifier):
 
 
     def fit(self, X, Z, y,
+            mask=None,
             batch_size=None,
             n_epochs=1,
             callback=None,
             warm=True):
         n_examples, n_inputs = X.shape
+
+        assert mask is None
 
         if not hasattr(self, 'session'):
             self.tf_vars, self.train_ops = self.build(n_inputs)
