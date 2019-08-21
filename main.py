@@ -186,6 +186,7 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
         model.fit(experiment.X[kn],
                   corrections[kn],
                   experiment.y[kn],
+                  mask=corrections_mask[kn],
                   n_epochs=args.n_epochs,
                   batch_size=args.batch_size,
                   warm=True)
