@@ -278,8 +278,10 @@ def main():
                             'If empty, phi(x) = x.')
     group.add_argument('-e', '--eta', type=float, default=0.1,
                        help='Learning rate')
-    group.add_argument('-L', '--lambdas', type=float, nargs='+', default=(0.1, 0.01),
-                       help='Hyperaparameters of the SENN model')
+    group.add_argument('-L', '--lambdas', type=float, nargs=2, default=(0.1, 0.01),
+                       help='Hyperaparameters of the explanation loss and '
+                            'explanation regularization, respectively. '
+                            'The label loss has weight 1 - sum(lambdas).')
     group.add_argument('-E', '--n-epochs', type=int, default=100,
                        help='Number of epochs per iteration')
     group.add_argument('-B', '--batch-size', type=int, default=None,

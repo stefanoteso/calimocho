@@ -23,7 +23,7 @@ class NNWithLRP(Classifier):
         Sizes of the hidden layers.
     eta : float, defaults to 0.01
         Learning rate.
-    lambdas : tuple of float, defaults to (0.1,)
+    lambdas : tuple of float, defaults to (0.1, 0.01)
         Weight of the loss on the corrections
     method : str, defaults to 'lrp.epsilon'
         Name of the explainer, passed straight to innvestigate.
@@ -36,11 +36,11 @@ class NNWithLRP(Classifier):
     def __init__(self, **kwargs):
         self.w_sizes = kwargs.pop('w_sizes', [])
         self.eta = kwargs.pop('eta', 0.1)
-        self.lambda_ = kwargs.pop('lambdas', (0.1,))[0]
-        assert 0 <= self.lambda_ <= 1
+        self.lambdas = kwargs.pop('lambdas', (0.1, 0.01))
         self.method = kwargs.pop('method', 'lrp.z')
         self.method_kwargs = kwargs.pop('method_kwargs', {})
         self.rng = check_random_state(kwargs.pop('rng', None))
+        assert all(l >= 0 for l in self.lambdas) and sum(self.lambdas) <= 1
 
 
     def _build(self, X, y):
@@ -66,12 +66,13 @@ class NNWithLRP(Classifier):
                 and analyzer._n_debug_output == 0)
 
         # Create a model that outputs both predictions and explanations
+        l0, l1, l2 = 1 - sum(self.lambdas), self.lambdas[0], self.lambdas[1]
         twin_model = Model(inputs=model.inputs,
                            outputs=model.outputs + analyzer_model.outputs)
         twin_model.compile(optimizer='adam',
                            loss=['categorical_crossentropy',
                                  'mean_squared_error'],
-                           loss_weights=[1 - self.lambda_, self.lambda_])
+                           loss_weights=[l0, l1])
 
         if False:
             print('inputs =', twin_model.inputs)
