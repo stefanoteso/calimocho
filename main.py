@@ -154,7 +154,6 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
               warm=False)
 
     # Do the active learning dance
-    print('learning...')
     corrections = np.zeros_like(experiment.Z)
     corrections_mask = np.zeros_like(experiment.Z)
 
