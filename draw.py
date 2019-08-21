@@ -21,7 +21,7 @@ def _get_style(args, tr_args):
     fields = [
         ('qss', tr_args.strategy),
         ('arch', arch),
-        ('$c$', tr_args.n_corrected),
+        ('$c$', tr_args.prop_corrected),
         ('$\lambda$', ','.join(map(str, lambdas))),
         #('$\eta$', tr_args.eta),
         #('E', tr_args.n_epochs),
