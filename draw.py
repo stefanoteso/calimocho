@@ -7,25 +7,30 @@ plt.style.use('ggplot')
 from calimocho import load
 
 
-def _get_style(args, trace_args):
-    # XXX stub
+def _get_style(args, tr_args):
+    lambdas = 1 - sum(tr_args.lambdas), tr_args.lambdas[0], tr_args.lambdas[1]
 
-    label = ' '.join([
-        trace_args.experiment,
-        trace_args.explainer,
-        trace_args.strategy
-    ])
+    model = tr_args.model
+    if tr_args.model != 'senn':
+        model += '+' + tr_args.explainer
 
-    color = {
-        0: '#FF00FF',
-        1: '#0000FF',
-        2: '#FF0000',
-        3: '#00FF00',
-        4: '#000000',
-    }[trace_args.n_corrected]
-    linestyle = '-'
+    arch1 = ':'.join(map(str, tr_args.w_sizes))
+    arch2 = ':'.join(map(str, tr_args.phi_sizes))
+    arch = arch1 if tr_args.model == 'senn' else arch1 + '|' + arch2
 
-    return label, color, linestyle
+    fields = [
+        ('qss', tr_args.strategy),
+        ('arch', arch),
+        ('$c$', tr_args.n_corrected),
+        ('$\lambda$', ','.join(map(str, lambdas))),
+        #('$\eta$', tr_args.eta),
+        #('E', tr_args.n_epochs),
+        #('B', tr_args.batch_size),
+    ]
+    rest = ' '.join([name + '=' + str(value)
+                     for name, value in fields])
+
+    return model + ' ' + rest
 
 
 def _draw(args, traces, traces_args):
@@ -53,26 +58,26 @@ def _draw(args, traces, traces_args):
     for m, ax in enumerate(axes):
         name, max_y = CONFIGS[m]
 
-        ax.set_xlabel('Epochs')
+        ax.set_xlabel('Iterations')
         ax.set_ylabel(name)
 
         for p in range(n_pickles):
             perf = traces[p, :, :, m]
-            label, color, linestyle = _get_style(args, trace_args[p])
+            label = _get_style(args, trace_args[p])
 
             x = np.arange(n_iters)
             y = np.mean(perf, axis=0)
             yerr = np.std(perf, axis=0) / np.sqrt(n_folds)
 
-            ax.plot(x, y,
-                    linewidth=2, label=label)
+            ax.plot(x, y, linewidth=2, label=label)
             ax.fill_between(x, y - yerr, y + yerr,
-                            color=color, alpha=0.35, linewidth=0)
+                            alpha=0.35, linewidth=0)
 
             max_y = max(max_y, 1.1 * y.max())
 
         ax.set_ylim(0, max_y)
-        ax.legend(loc='upper right', fontsize=8, shadow=False)
+        if m == 0:
+            ax.legend(loc='upper right', fontsize=8, shadow=False)
 
     fig.savefig(args.basename + '.png',
                 bbox_inches='tight',
