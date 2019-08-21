@@ -228,12 +228,12 @@ def eval_active(experiment, args, basename):
 
 
 def _get_basename(args):
-    fields = [('model', args.model)]
+    fields = [('m', args.model)]
     if args.model != 'senn':
-        fields.append(('explainer', args.explainer))
+        fields.append(('x', args.explainer))
 
     fields.extend([
-        ('strategy', args.strategy),
+        ('qss', args.strategy),
         ('n', args.n_examples),
         ('k', args.n_splits),
         ('p', args.prop_known),
