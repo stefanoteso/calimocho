@@ -32,10 +32,16 @@ def _draw(args, traces, traces_args):
 
     CONFIGS = [
         ('query index', 0),
-        ('$y$ loss on query', 0),
-        ('$z$ loss on query', 0),
-        ('$y$ loss on test', 0),
-        ('$z$ loss on test', 0),
+        ('$\ell_y$ on query', 0),
+        ('$\ell_z$ on query', 0),
+        ('$Pr$ on query', 1),
+        ('$Rc$ on query', 1),
+        ('$F_1$ on query', 1),
+        ('$\ell_y$ on test set', 0),
+        ('$\ell_z$ on test set', 0),
+        ('$Pr$ on test set', 1),
+        ('$Rc$ on test set', 1),
+        ('$F_1$ on test set', 1),
         ('runtime', 0),
     ]
 

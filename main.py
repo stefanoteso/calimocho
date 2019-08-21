@@ -3,7 +3,6 @@ import tensorflow as tf
 from innvestigate.analyzer import analyzers
 from sklearn.model_selection import StratifiedShuffleSplit
 from sklearn.metrics import precision_recall_fscore_support as prfs
-from sklearn.metrics import pairwise_distances
 from sklearn.utils import check_random_state
 from os.path import join
 from time import time
@@ -86,19 +85,29 @@ def _get_correction(experiment, model, args, i):
 
 def _evaluate(experiment, model, i, ts):
 
-    # compute the y and z losses on the query instance
-    y_loss_i, z_loss_i = \
-        model.evaluate(experiment.X[i].reshape(1, -1),
-                       experiment.Z[i].reshape(1, -1),
-                       np.array([experiment.y[i]]))
+    # compute performance on the query instance
+    x_i = experiment.X[i].reshape(1, -1)
+    z_i = experiment.Z[i].reshape(1, -1)
+    y_i = np.array([experiment.y[i]])
 
-    # compute the y and z losses on the test set
+    y_loss_i, z_loss_i = model.evaluate(x_i, z_i, y_i)
+    prf_i = prfs(y_i.reshape(1, -1),
+                 model.predict(x_i),
+                 labels=[0, 1],
+                 average='binary')[:3]
+
+    # compute performance on the test set
     y_loss_ts, z_loss_ts = \
         model.evaluate(experiment.X[ts],
                        experiment.Z[ts],
                        experiment.y[ts])
+    prf_ts = prfs(experiment.y[ts],
+                  model.predict(experiment.X[ts]),
+                  labels=[0, 1],
+                  average='binary')[:3]
 
-    return [y_loss_i, z_loss_i, y_loss_ts, z_loss_ts]
+    return ([y_loss_i, z_loss_i] + list(prf_i) +
+            [y_loss_ts, z_loss_ts] + list(prf_ts))
 
 
 def _naive_al(experiment, model, kn, tr, ts, args, basename):
