@@ -95,18 +95,33 @@ def _get_correction(experiment, model, args, i):
     return correction, mask
 
 
+def _dump_explanations(experiment, model, basename, t, indices, suffix):
+    for i in indices:
+        path = basename + '__t={}__i={}__{}.png'.format(t, i, suffix)
+
+        x = experiment.X[i].reshape(1, -1)
+        experiment.dump_explanation(path,
+                                    experiment.X[i],
+                                    experiment.Z[i],
+                                    model.explain(x).ravel())
+
+
 def _evaluate(experiment, model, i, ts):
 
     # compute performance on the query instance
-    x_i = experiment.X[i].reshape(1, -1)
-    z_i = experiment.Z[i].reshape(1, -1)
-    y_i = np.array([experiment.y[i]])
+    if i >= 0:
+        x_i = experiment.X[i].reshape(1, -1)
+        z_i = experiment.Z[i].reshape(1, -1)
+        y_i = np.array([experiment.y[i]])
 
-    y_loss_i, z_loss_i = model.evaluate(x_i, z_i, y_i)
-    prf_i = prfs(y_i.reshape(1, -1),
-                 model.predict(x_i),
-                 labels=[0, 1],
-                 average='binary')[:3]
+        y_loss_i, z_loss_i = model.evaluate(x_i, z_i, y_i)
+        prf_i = prfs(y_i.reshape(1, -1),
+                     model.predict(x_i),
+                     labels=[0, 1],
+                     average='binary')[:3]
+    else:
+        y_loss_i, z_loss_i = -1, -1
+        prf_i = (-1, -1, -1)
 
     # compute performance on the test set
     y_loss_ts, z_loss_ts = \
@@ -122,33 +137,12 @@ def _evaluate(experiment, model, i, ts):
             [y_loss_ts, z_loss_ts] + list(prf_ts))
 
 
-def _naive_al(experiment, model, kn, tr, ts, args, basename):
+def _naive(experiment, model, kn, tr, ts, args, basename, rng):
     max_iters = args.max_iters
     if max_iters <= 0:
         max_iters = len(tr)
 
     select_query = STRATEGIES[args.strategy]
-
-    if args.passive:
-
-        # Fit an initial model on the known instances
-        model.fit(experiment.X[tr],
-                  experiment.Z[tr],
-                  experiment.y[tr],
-                  n_epochs=args.n_epochs,
-                  batch_size=args.batch_size,
-                  warm=False)
-
-        # Explain the test set and dump the explanations on-disk
-        for i in ts:
-            path = basename + '__instance={}'.format(i)
-            x = experiment.X[i].reshape(1, -1)
-            experiment.dump_explanation(path + '.png',
-                                        experiment.X[i],
-                                        experiment.Z[i],
-                                        model.explain(x).ravel())
-
-        quit()
 
     # Fit an initial model on the known instances
     model.fit(experiment.X[kn],
@@ -181,10 +175,7 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
         path = basename + '__t={}__instance={}'.format(t, i)
 
         # Dump the explanation of the query instance before training
-        experiment.dump_explanation(path + '__0.png',
-                                    experiment.X[i],
-                                    experiment.Z[i],
-                                    model.explain(x).ravel())
+        _dump_explanations(experiment, model, basename, t, [i], '0')
 
         # Re-train the model on all the supervision
         model.fit(experiment.X[kn],
@@ -196,10 +187,7 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
                   warm=True)
 
         # Dump the explanation of the query instance after training
-        experiment.dump_explanation(path + '__1.png',
-                                    experiment.X[i],
-                                    experiment.Z[i],
-                                    model.explain(x).ravel())
+        _dump_explanations(experiment, model, basename, t, [i], '1')
 
         runtime = time() - runtime
 
@@ -210,12 +198,97 @@ def _naive_al(experiment, model, kn, tr, ts, args, basename):
     return trace
 
 
+def _sample_centers(vectors, indices, args, rng):
+    """Implementation of the kmeans++ seeding algorithm.
+
+    See Appendix A of [1].
+    """
+    def dist2(x, z):
+        return np.sum((x - z)**2)
+
+    centers = [rng.choice(indices)]
+    while len(centers) < args.n_queries_per_iter:
+        dist_to_centers = [min(dist2(vectors[i], vectors[j]) for j in centers)
+                           for i in indices]
+        p = dist_to_centers / np.sum(dist_to_centers)
+        i = rng.choice(indices, p=p)
+        centers, indices = _move_indices(centers, indices, [i])
+    return np.array(centers, dtype=int)
+
+
+def _badge(experiment, model, kn, tr, ts, args, basename, rng):
+    """Batch deep active learning.
+
+    References
+    ----------
+
+    [1] "Deep Batch Active Learning by Diverse, Uncertain Gradient Lower
+         Bounds", Ash et al., 2019. (pre-print).
+    """
+    max_iters = args.max_iters
+    if max_iters <= 0:
+        max_iters = len(tr)
+
+    # Fit an initial model on the known instances
+    model.fit(experiment.X[kn],
+              experiment.Z[kn],
+              experiment.y[kn],
+              n_epochs=args.n_epochs,
+              batch_size=args.batch_size,
+              warm=False)
+
+    corrections = np.zeros_like(experiment.Z)
+    corrections_mask = np.zeros_like(experiment.Z)
+
+    # Do the badge dance
+    trace = []
+    for t in range(1, max_iters + 1):
+        if not len(tr):
+            break
+
+        runtime = time()
+
+        # Select a query instance
+        n_examples = experiment.X.shape[0]
+        fake_grads = rng.normal(0, 1, size=n_examples) # XXX
+        centers = _sample_centers(fake_grads, tr, args, rng)
+        kn, tr = _move_indices(kn, tr, centers)
+
+        # Retrieve explanation corrections for the query instances
+        for i in centers:
+            corrections[i], corrections_mask[i] = \
+                _get_correction(experiment, model, args, i)
+
+        # Dump the explanations of the queries before training
+        _dump_explanations(experiment, model, basename, t, centers, '0')
+
+        # Re-train the model on all the supervision
+        model.fit(experiment.X[kn],
+                  experiment.Z[kn],
+                  experiment.y[kn],
+                  n_epochs=args.n_epochs,
+                  batch_size=args.batch_size,
+                  warm=True)
+
+        # Dump the explanations of the queries after training
+        _dump_explanations(experiment, model, basename, t, centers, '1')
+
+        runtime = time() - runtime
+
+        trace.append([-1] + _evaluate(experiment, model, -1, ts) + [runtime])
+        message = ' '.join(['{:5.3f}'.format(s) for s in trace[-1][1:]])
+        print('{:3d} : {}'.format(t, message))
+
+    return trace
+
+
 ALGORITHMS = {
-    'naive': _naive_al,
+    'naive': _naive,
+    'badge': _badge,
 }
 
 
-def eval_active(experiment, args, basename):
+def run(experiment, args, basename):
     rng = np.random.RandomState(args.seed)
 
     algo = ALGORITHMS[args.algorithm]
@@ -224,9 +297,31 @@ def eval_active(experiment, args, basename):
     traces = []
     for k, (kn, tr, ts) in enumerate(experiment.split(n_splits=args.n_splits,
                                                       prop_known=args.prop_known)):
+
+        if args.passive:
+
+            # Fit an initial model on the known instances
+            model.fit(experiment.X[tr],
+                      experiment.Z[tr],
+                      experiment.y[tr],
+                      n_epochs=args.n_epochs,
+                      batch_size=args.batch_size,
+                      warm=False)
+
+            # Explain the test set and dump the explanations on-disk
+            for i in ts:
+                path = basename + '__instance={}'.format(i)
+                x = experiment.X[i].reshape(1, -1)
+                experiment.dump_explanation(path + '.png',
+                                            experiment.X[i],
+                                            experiment.Z[i],
+                                            model.explain(x).ravel())
+
+            quit()
+
         print('fold {} : #kn {}, #tr {}, #ts {}'.format(k + 1, len(kn), len(tr), len(ts)))
         traces.append(algo(experiment, model, kn, tr, ts, args,
-                           basename + '__fold={}'.format(k)))
+                           basename + '__fold={}'.format(k), rng))
 
     return traces
 
@@ -268,12 +363,10 @@ def main():
                         help='name of the experiment')
     parser.add_argument('model', type=str, choices=sorted(MODELS.keys()),
                         help='The model to use')
-    parser.add_argument('--strategy', choices=sorted(STRATEGIES.keys()),
-                        default='random', help='The query selection strategy')
     parser.add_argument('-s', '--seed', type=int, default=0,
                         help='RNG seed')
 
-    group = parser.add_argument_group('Evaluation')
+    group = parser.add_argument_group('evaluation')
     group.add_argument('--passive', action='store_true',
                        help='Learn on training set, dump explanations, quit')
     group.add_argument('-n', '--n-examples', type=int, default=None,
@@ -282,13 +375,19 @@ def main():
                        help='Number of cross-validation folds')
     group.add_argument('-p', '--prop-known', type=float, default=0.05,
                        help='Proportion of examples known before interaction')
-    group.add_argument('-c', '--prop-corrected', type=float, default=1.0,
-                       help='Proportion of features corrected at each '
-                            'iteration')
     group.add_argument('-T', '--max-iters', type=int, default=100,
                        help='Maximum number of learning iterations')
 
-    group = parser.add_argument_group('Model')
+    group = parser.add_argument_group('interaction')
+    group.add_argument('--strategy', choices=sorted(STRATEGIES.keys()),
+                       default='random', help='The query selection strategy')
+    group.add_argument('-c', '--prop-corrected', type=float, default=1.0,
+                       help='Proportion of features corrected at each '
+                            'iteration')
+    group.add_argument('-q', '--n-queries-per-iter', type=int, default=1,
+                       help='Number of queries per iteration (for badge).')
+
+    group = parser.add_argument_group('model')
     group.add_argument('-X', '--explainer', choices=sorted(analyzers.keys()),
                        default='lrp.epsilon',
                        help='Explainer.  Only valid for nn+lrp.')
@@ -322,7 +421,7 @@ def main():
     experiment = EXPERIMENTS[args.experiment](n_examples=args.n_examples,
                                               rng=args.seed)
 
-    traces = eval_active(experiment, args, basename)
+    traces = run(experiment, args, basename)
     dump(basename + '__trace.pickle', {
              'args': args,
              'traces': traces,
