@@ -15,3 +15,6 @@ from .experiment import *
 
 from . import colors
 from .colors import *
+
+from . import fairness
+from .fairness import *

@@ -1,6 +1,7 @@
 innvestigate==1.0.8
 matplotlib==3.1.1
 numpy==1.17.0
+pandas==0.25.1
 pydot==1.4.1
 scikit-image==0.15.0
 scikit-learn==0.21.3

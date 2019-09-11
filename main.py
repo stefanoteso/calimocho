@@ -13,6 +13,7 @@ from calimocho import *
 EXPERIMENTS = {
     'colors0': lambda **kwargs: ColorsExperiment(rule=0, **kwargs),
     'colors1': lambda **kwargs: ColorsExperiment(rule=1, **kwargs),
+    'adult': lambda **kwargs: AdultExperiment(**kwargs),
 }
 
 
