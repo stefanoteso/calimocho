@@ -13,8 +13,5 @@ from .nn_plus_lrp import *
 from . import experiment
 from .experiment import *
 
-from . import xor
-from .xor import *
-
 from . import colors
 from .colors import *

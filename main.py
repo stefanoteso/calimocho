@@ -11,7 +11,6 @@ from calimocho import *
 
 
 EXPERIMENTS = {
-    'xor': XorExperiment,
     'colors0': lambda **kwargs: ColorsExperiment(rule=0, **kwargs),
     'colors1': lambda **kwargs: ColorsExperiment(rule=1, **kwargs),
 }
