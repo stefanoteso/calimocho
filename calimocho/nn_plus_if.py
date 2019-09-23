@@ -47,25 +47,13 @@ class NNWithIF(Classifier):
         self.batch_size = kwargs.pop('batch_size')
         self.data_sets = kwargs.pop('data_sets')
         self.train_dir = kwargs.pop('train_dir', 'output')
-        self.input_dim = kwargs.pop('input_dim')
-        self.num_classes = kwargs.pop('num_classes')  # TODO conflict resolve in MultilayerPerceptron
-        self.initial_learning_rate = kwargs.pop('initial_learning_rate')
-        self.l2_params = kwargs.pop('l2_params')
-        self.l2_params_placeholder = tf.placeholder("float32", None, name="l2_params")
-        self.annotation = kwargs.pop('annotation')
-        self.layers_all = list([self.input_dim]) + list(kwargs.pop('layers')) + list([self.num_classes])
-        self.rng = None
+        self.rng = check_random_state(17) #check_random_state(kwargs.pop('rng', None))
 
         try:
             self.initial_learning_rate2 = kwargs.pop('initial_learning_rate2')
         except:
             self.initial_learning_rate2 = 0
         self.decay_epochs = kwargs.pop('decay_epochs')
-
-        if 'keep_probs' in kwargs:
-            self.keep_probs = kwargs.pop('keep_probs')
-        else:
-            self.keep_probs = None
 
         if 'mini_batch' in kwargs:
             self.mini_batch = kwargs.pop('mini_batch')
@@ -83,93 +71,8 @@ class NNWithIF(Classifier):
         # Initialize session
         config = tf.ConfigProto(
             intra_op_parallelism_threads=1)  # (inter_op_parallelism_threads=1, intra_op_parallelism_threads=1)
-        self.sess = tf.Session()  # tf.Session(config=config)
-        K.set_session(self.sess)
 
-        # Setup input
-        self.input_placeholder, self.labels_placeholder = self.placeholder_inputs()
-        self.num_train_examples = self.data_sets.train.labels.shape[0]
-        self.num_test_examples = self.data_sets.test.labels.shape[0]
-
-        # Setup inference and training
-        if self.keep_probs is not None:
-            self.keep_probs_placeholder = tf.placeholder(tf.float32, shape=(2))
-            self.logits = self.inference(self.input_placeholder, self.keep_probs_placeholder)
-        elif hasattr(self, 'inference_needs_labels'):
-            self.logits = self.inference(self.input_placeholder, self.labels_placeholder)
-        else:
-            self.logits = self.inference(self.input_placeholder)
-
-        self.params = self.get_all_params()
-        self.damping = tf.Variable(0, trainable=False, dtype=tf.float32)
-        self.scale = tf.Variable(10000000000, trainable=False, dtype=tf.float32)  # np.float32(1)
-
-        self.total_loss, self.loss_no_reg, self.indiv_loss_no_reg = self.loss(self.logits, self.labels_placeholder)
-
-
-        assert self.num_classes is not None
-
-
-        # Setup gradients and Hessians
-        self.grad_total_loss_op = tf.gradients(self.total_loss, self.params)
-        self.grad_loss_no_reg_op = tf.gradients(self.loss_no_reg, self.params)
-
-        self.v_placeholder = [tf.placeholder(tf.float32, shape=a.get_shape(), name='v_placeholder') for a in
-                              self.params]
-        self.u_placeholder = [tf.placeholder(tf.float32, shape=a.get_shape(), name='u_placeholder') for a in
-                              self.params]
-        # self.u_placeholder = [tf.placeholder(tf.float32, shape=(w.get_shape()[0]+1, w.get_shape()[1]), name='u_placeholder') for w, b in self.params]
-
-        self.global_step = tf.Variable(0, name='global_step', trainable=False)
-        self.learning_rate = tf.Variable(self.initial_learning_rate, name='learning_rate', trainable=False,
-                                         dtype=tf.float32)
-        self.learning_rate2 = tf.Variable(self.initial_learning_rate2, name='learning_rate2', trainable=False)
-        self.learning_rate_placeholder = tf.placeholder(tf.float32)
-        self.update_learning_rate_op = tf.assign(self.learning_rate, self.learning_rate_placeholder)
-
-
-        # right reasons loss
-
-        self.if_per_sample = tf.map_fn(self.IF_per_sample, (self.input_placeholder, self.labels_placeholder, self.input_placeholder, self.labels_placeholder), dtype=tf.float32, parallel_iterations=50)
-        self.right_reasons_loss_if = self.right_reasons_if(self.annotation[0].astype(np.float32), **kwargs)
-        self.rrr = tf.reduce_sum(self.right_reasons_loss_if) + self.total_loss
-        self.train_op = self.get_train_op(self.rrr, self.global_step, self.learning_rate)
-
-
-        # Setup misc
-        self.saver = tf.train.Saver()
-
-        self.hessian_vector = hessian_vector_product(self.total_loss, self.params, self.v_placeholder)
-
-        self.grad_loss_wrt_input_op = tf.gradients(self.total_loss, self.input_placeholder)
-
-        # Because tf.gradients auto accumulates, we probably don't need the add_n (or even reduce_sum)
-        self.influence_op = tf.add_n(
-            [tf.reduce_sum(tf.multiply(a, array_ops.stop_gradient(b))) for a, b in
-             zip(self.grad_total_loss_op, self.v_placeholder)])
-
-        self.grad_influence_wrt_input_op = tf.gradients(self.influence_op, self.input_placeholder)
-
-        self.all_train_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.train)
-        self.all_test_feed_dict = self.fill_feed_dict_with_all_ex(self.data_sets.test)
-
-        init = tf.global_variables_initializer()
-        self.sess.run(init)
-
-        self.adversarial_loss, self.indiv_adversarial_loss = None, None  # self.adversarial_loss(self.logits, self.labels_placeholder)
-        if self.adversarial_loss is not None:
-            # self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
-            self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, np.asarray(self.params)[:, 0].tolist())
-
-        # compute hvp out with tf
-        # \sum_i L(Z_i, \hat{\theta})  i are TRAINING indices
-
-        self.accuracy_op = self.get_accuracy_op(self.logits, self.labels_placeholder)
-
-        init = tf.global_variables_initializer()
-        self.sess.run(init)
-
-    def get_all_params(self):
+    def _get_all_params(self):
 
         all_params = []
         for layer in ['relu%s'%i for i in np.arange(1, len(self.layers_all))]:
@@ -180,15 +83,16 @@ class NNWithIF(Classifier):
 
         return all_params
 
-    def get_train_op(self, total_loss, global_step, learning_rate):
+    def _get_train_op(self, total_loss, global_step, learning_rate):
         """
         Return train_op
         """
-        optimizer = tf.train.AdamOptimizer(learning_rate)
-        train_op = optimizer.minimize(total_loss, global_step=global_step)
+        with tf.variable_scope("default", reuse=tf.AUTO_REUSE):
+            optimizer = tf.train.AdamOptimizer(learning_rate)
+            train_op = optimizer.minimize(total_loss, global_step=global_step)
         return train_op
 
-    def get_accuracy_op(self, logits, labels):
+    def _get_accuracy_op(self, logits, labels):
         """Evaluate the quality of the logits at predicting the label.
         Args:
           logits: Logits tensor, float - [batch_size, NUM_CLASSES].
@@ -204,13 +108,16 @@ class NNWithIF(Classifier):
     def print_model_eval(self):
         params_val = self.sess.run(self.params)
 
+        all_train_feed_dict = self._fill_feed_dict_with_all_ex(self.data_sets.train)
+        all_test_feed_dict = self._fill_feed_dict_with_all_ex(self.data_sets.test)
+
         grad_loss_val, loss_no_reg_val, loss_val, train_acc_val = self.sess.run(
             [self.grad_total_loss_op, self.loss_no_reg, self.total_loss, self.accuracy_op],
-            feed_dict=self.all_train_feed_dict)
+            feed_dict=all_train_feed_dict)
 
         test_loss_val, test_acc_val = self.sess.run(
             [self.loss_no_reg, self.accuracy_op],
-            feed_dict=self.all_test_feed_dict)
+            feed_dict=all_test_feed_dict)
 
         print('Train loss (w reg) on all data: %s' % loss_val)
         print('Train loss (w/o reg) on all data: %s' % loss_no_reg_val)
@@ -222,7 +129,7 @@ class NNWithIF(Classifier):
         return train_acc_val, test_acc_val, loss_val, test_loss_val
 
 
-    def placeholder_inputs(self):
+    def _placeholder_inputs(self):
         input_placeholder = tf.placeholder(
             tf.float32,
             shape=(None, self.input_dim),
@@ -231,18 +138,22 @@ class NNWithIF(Classifier):
             tf.int32,
             shape=(None),
             name='labels_placeholder')
-        return input_placeholder, labels_placeholder
+        z_placeholder = tf.placeholder(
+            tf.int32,
+            shape=(None, self.input_dim),
+            name='z_placeholder')
+        return input_placeholder, labels_placeholder, z_placeholder
 
-    def fill_feed_dict_with_all_ex(self, data_set):
+    def _fill_feed_dict_with_all_ex(self, data_set):
         feed_dict = {
             self.input_placeholder: data_set.x,
             self.labels_placeholder: data_set.labels
         }
         return feed_dict
 
-    def fill_doubled_feed_dict_with_batch_no_shuffle(self, data_set, batch_size=0):
+    def _fill_doubled_feed_dict_with_batch_no_shuffle(self, data_set, batch_size=0):
         if batch_size is None:
-            return self.fill_feed_dict_with_all_ex(data_set)
+            return self._fill_feed_dict_with_all_ex(data_set)
         elif batch_size == 0:
             batch_size = self.batch_size
 
@@ -253,7 +164,7 @@ class NNWithIF(Classifier):
         }
         return feed_dict
 
-    def loss(self, logits, labels):
+    def _loss(self, logits, labels):
         labels = tf.one_hot(labels, depth=self.num_classes, dtype=tf.float32)
         ll_logits = logits - tf.reduce_logsumexp(logits, axis=1, keepdims=True)
         cross_entropy = tf.reduce_sum(tf.multiply(labels, -ll_logits), reduction_indices=1)  # logist --> tf.nn.log_softmax(logits))
@@ -266,7 +177,7 @@ class NNWithIF(Classifier):
         return total_loss, loss_no_reg, indiv_loss_no_reg
 
 
-    def inference(self, input, nonlinearity=tf.nn.leaky_relu):
+    def _inference(self, input, nonlinearity=tf.nn.leaky_relu):
         """
         It implements the inference algorithm and ouputs the log probability for each class
         """
@@ -284,6 +195,78 @@ class NNWithIF(Classifier):
 
         return outputs
 
+    def _init_graph(self, input_dim, num_classes, layers):
+        self.input_dim = input_dim
+        self.num_classes = num_classes
+        self.initial_learning_rate = 0.001
+        self.l2_params_placeholder = tf.placeholder("float32", None, name="l2_params")
+        self.layers_all = list([self.input_dim]) + layers + list([self.num_classes])
+
+        self.sess = tf.Session()  # tf.Session(config=config)
+        K.set_session(self.sess)
+
+        # Setup input
+        self.input_placeholder, self.labels_placeholder, self.Z_placeholder = self._placeholder_inputs()
+
+        # Setup inference and training
+        self.logits = self._inference(self.input_placeholder)
+
+        self.params = self._get_all_params()
+        self.damping = tf.Variable(0, trainable=False, dtype=tf.float32)
+        self.scale = tf.Variable(10000000000, trainable=False, dtype=tf.float32)  # np.float32(1)
+
+        self.total_loss, self.loss_no_reg, self.indiv_loss_no_reg = self._loss(self.logits, self.labels_placeholder)
+
+
+        assert self.num_classes is not None
+
+
+        # Setup gradients and Hessians
+        self.grad_total_loss_op = tf.gradients(self.total_loss, self.params)
+        self.grad_loss_no_reg_op = tf.gradients(self.loss_no_reg, self.params)
+
+        self.v_placeholder = [tf.placeholder(tf.float32, shape=a.get_shape(), name='v_placeholder') for a in
+                              self.params]
+        self.u_placeholder = [tf.placeholder(tf.float32, shape=a.get_shape(), name='u_placeholder') for a in
+                              self.params]
+
+        self.global_step = tf.Variable(0, name='global_step', trainable=False)
+        self.learning_rate = tf.Variable(self.initial_learning_rate, name='learning_rate', trainable=False,
+                                         dtype=tf.float32)
+
+        # right reasons loss
+        self.if_per_sample = tf.map_fn(self.IF_per_sample, (self.input_placeholder, self.labels_placeholder, self.input_placeholder, self.labels_placeholder), dtype=tf.float32, parallel_iterations=50)
+        self.right_reasons_loss_if = self.right_reasons_if()
+        self.rrr = tf.reduce_sum(self.right_reasons_loss_if) + self.total_loss
+        self.train_op = self._get_train_op(self.rrr, self.global_step, self.learning_rate)
+
+
+        # Setup misc
+        self.saver = tf.train.Saver()
+
+        self.hessian_vector = hessian_vector_product(self.total_loss, self.params, self.v_placeholder)
+
+        self.grad_loss_wrt_input_op = tf.gradients(self.total_loss, self.input_placeholder)
+
+        # Because tf.gradients auto accumulates, we probably don't need the add_n (or even reduce_sum)
+        self.influence_op = tf.add_n(
+            [tf.reduce_sum(tf.multiply(a, array_ops.stop_gradient(b))) for a, b in
+             zip(self.grad_total_loss_op, self.v_placeholder)])
+
+        self.grad_influence_wrt_input_op = tf.gradients(self.influence_op, self.input_placeholder)
+
+        self.adversarial_loss, self.indiv_adversarial_loss = None, None  # self.adversarial_loss(self.logits, self.labels_placeholder)
+        if self.adversarial_loss is not None:
+            # self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, self.params)
+            self.grad_adversarial_loss_op = tf.gradients(self.adversarial_loss, np.asarray(self.params)[:, 0].tolist())
+
+        # compute hvp out with tf
+        # \sum_i L(Z_i, \hat{\theta})  i are TRAINING indices
+
+        self.accuracy_op = self._get_accuracy_op(self.logits, self.labels_placeholder)
+
+        init = tf.global_variables_initializer()
+        self.sess.run(init)
 
 
     def fit(self, X, Z, y,
@@ -298,29 +281,22 @@ class NNWithIF(Classifier):
 
         logger.info('Training for %s steps', n_epochs)
 
-        # Create a summary to monitor cost tensor
+        self._init_graph(X.shape[1], len(np.unique(y)), [5])
+
+
         sess = self.sess
 
-        stat, write_every_n_step = None, None
-        train_acc, test_acc, loss_vals, test_loss_vals, if_vals, ig_vals, if_neg_vals, ig_neg_vals = [], [], [], [], [], [], [], []
         for step in range(n_epochs):
             #self.update_learning_rate(step)
             start_time = time.time()
 
-            grad_influence_feed_dict = self.fill_doubled_feed_dict_with_batch_no_shuffle(self.data_sets.train)
+            grad_influence_feed_dict = {self.input_placeholder:X.astype(np.float32), self.labels_placeholder:y.astype(np.int32), self.Z_placeholder:Z}
             #grad_influence_feed_dict[self.input_placeholder_test] = self.data_sets.train.x[[0]]
             #grad_influence_feed_dict[self.labels_placeholder_test] = self.data_sets.train.labels[[0]]
             #self.update_lambda(step, n_epochs, 1, 1, grad_influence_feed_dict)
-            grad_influence_feed_dict[self.l2_params_placeholder] = self.l2_params
+            grad_influence_feed_dict[self.l2_params_placeholder] = 1.0
             loss_val, if_val, ig_val, if_neg_val, ig_neg_val = 0, 0, 0, 0, 0  # sess.run([self.total_loss, self.right_reasons_loss_if, self.right_reasons_loss_ig, self.right_reasons_loss_if_neg, self.right_reasons_loss_ig_neg], feed_dict=grad_influence_feed_dict)
-            print(if_val, if_neg_val)
             _ = sess.run(self.train_op, feed_dict=grad_influence_feed_dict)
-            if_vals.append(if_val)
-            if_neg_vals.append(if_neg_val)
-            ig_vals.append(ig_val)
-            ig_neg_vals.append(ig_neg_val)
-            loss_vals.append(loss_val)
-
 
             duration = time.time() - start_time
 
@@ -330,19 +306,12 @@ class NNWithIF(Classifier):
                     logger.info('Step %d: loss = %.10f (%.3f sec)' % (step, loss_val, duration))
                     logger.info('Step %d: if = %.10f (%.3f sec)' % (step, np.sum(if_val), duration))
                     logger.info('Step %d: loss+if = %.10f (%.3f sec)' % (step, loss_val + np.sum(if_val), duration))
-                    # logger.info('Step %d: IF = %.13f (%.3f sec)' % (step, rrr_if, duration))
-
-                    # todo delete
-                    train_acc_val, test_acc_val, _, test_loss_val = self.print_model_eval()
-                    train_acc.append(train_acc_val)
-                    test_acc.append(test_acc_val)
-                    test_loss_vals.append(test_loss_val)
 
 
     def IF_per_sample(self, X_and_y):
         single_input, label, in_test, l_test = X_and_y
 
-        logits = self.inference(array_ops.stop_gradient(tf.reshape(in_test, shape=[1, -1])))
+        logits = self._inference(array_ops.stop_gradient(tf.reshape(in_test, shape=[1, -1])))
         ll_logits = logits - tf.reduce_logsumexp(logits, axis=1, keepdims=True)
         cross_entropy = ll_logits[:, 1]  #todo tmp test
 
@@ -392,7 +361,7 @@ class NNWithIF(Classifier):
         else:
             inverse_hvp = grad_cross_entropy_op   # ignore hessian
 
-        logits_2 = self.inference(tf.reshape(single_input, shape=[1, -1]))
+        logits_2 = self._inference(tf.reshape(single_input, shape=[1, -1]))
         ll_logits_2 = logits_2 - tf.reduce_logsumexp(logits_2, axis=1, keepdims=True)
         indiv_loss_2 = ll_logits_2[:, 1]  #todo tmp test
 
@@ -401,8 +370,8 @@ class NNWithIF(Classifier):
         gradXes = tf.gradients(influence_op, single_input)[0] # [ [1,75] ]
         return gradXes
 
-    def right_reasons_if(self, anno, sample_idx=None, **kwargs):
-        influence_mask = tf.gather(self.if_per_sample, np.where(anno==1)[0], axis=1) #tf.multiply(anno, self.if_per_sample)
+    def right_reasons_if(self, sample_idx=None, **kwargs):
+        influence_mask = tf.multiply(tf.cast(self.Z_placeholder, tf.float32), self.if_per_sample)
         rightreasons = tf.reduce_sum(tf.square(influence_mask), axis=1) * self.l2_params_placeholder
         return rightreasons
 
