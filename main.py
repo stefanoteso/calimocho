@@ -304,7 +304,7 @@ def main():
     parser.add_argument('--passive', action='store_true',
                         help='Stick to passive learning')
     parser.add_argument('-s', '--seed', type=int, default=0,
-                        help='RNG seed')
+                        help='Random seed')
 
     group = parser.add_argument_group('Evaluation')
     group.add_argument('-n', '--n-examples', type=int, default=None,
